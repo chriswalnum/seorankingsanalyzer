@@ -60,11 +60,11 @@ def validate_location(location):
     except Exception:
         return False
 
-def fetch_serp_data(query, api_key):
+def fetch_serp_data(query):
     """Fetch SERP data from ValueSERP API"""
     base_url = "https://api.valueserp.com/search"
     params = {
-        'api_key': api_key,
+        'api_key': st.secrets["VALUESERP_API_KEY"],
         'q': query['query'],
         'location': query['location'],
         'google_domain': 'google.com',
@@ -90,12 +90,6 @@ def main():
     with st.sidebar:
         st.header("Configuration")
         
-        # API Key input - using Streamlit secrets if available
-        default_api_key = st.secrets["VALUESERP_API_KEY"] if "VALUESERP_API_KEY" in st.secrets else ""
-        api_key = st.text_input("ValueSERP API Key", 
-                               value=default_api_key,
-                               type="password")
-        
         # Target URL input
         target_url = st.text_input("Target Website URL", 
                                   placeholder="example.com")
@@ -113,7 +107,7 @@ def main():
         analyze_button = st.button("Run Analysis", type="primary")
 
     # Main content area
-    if analyze_button and api_key and target_url and keywords and locations:
+    if analyze_button and target_url and keywords and locations:
         with st.spinner("Analyzing search rankings..."):
             # Process inputs
             keyword_list = [k.strip() for k in keywords.split('\n') if k.strip()]
@@ -157,7 +151,7 @@ def main():
             results = []
             progress_bar = st.progress(0)
             for i, query in enumerate(search_queries):
-                serp_data = fetch_serp_data(query, api_key)
+                serp_data = fetch_serp_data(query)
                 if serp_data:
                     organic_results = serp_data.get('organic_results', [])
                     local_results = serp_data.get('local_results', [])
