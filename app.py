@@ -288,7 +288,7 @@ def main():
     st.title("🎯 SEO Rankings Analyzer Pro")
     st.markdown("""
         <div class="info-box">
-            Analyze your website's search rankings across multiple locations with detailed insights and professional reporting.
+            Analyze a website's search rankings across multiple locations with detailed insights.
         </div>
     """, unsafe_allow_html=True)
 
