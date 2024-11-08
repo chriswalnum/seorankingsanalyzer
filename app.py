@@ -99,7 +99,7 @@ def fetch_serp_data(query):
     except requests.exceptions.RequestException:
         return None
 
-def generate_html_report(results, target_url, analysis_duration):
+def generate_html_report(results, target_url):
     """Generate a professional HTML report using Jinja2"""
     template_string = """
     <!DOCTYPE html>
@@ -196,10 +196,6 @@ def generate_html_report(results, target_url, analysis_duration):
                 <h3>Ranking Rate</h3>
                 <div class="metric-value">{{ ranking_rate }}%</div>
             </div>
-            <div class="metric-card">
-                <h3>Analysis Duration</h3>
-                <div class="metric-value">{{ analysis_duration }}s</div>
-            </div>
         </div>
 
         <h2>Rankings Overview</h2>
@@ -249,7 +245,6 @@ def generate_html_report(results, target_url, analysis_duration):
         total_queries=total_queries,
         ranked_queries=ranked_queries,
         ranking_rate=ranking_rate,
-        analysis_duration=analysis_duration,
         results=results
     )
     
