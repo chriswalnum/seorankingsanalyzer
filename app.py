@@ -159,6 +159,13 @@ def generate_html_report(results, target_url):
                 font-weight: bold;
                 color: #1e3a8a;
             }
+            .section-title {
+                color: #1e3a8a;
+                font-size: 18px;
+                margin: 2rem 0 1rem 0;
+                padding-bottom: 0.5rem;
+                border-bottom: 2px solid #e2e8f0;
+            }
             table {
                 width: 100%;
                 border-collapse: collapse;
@@ -193,6 +200,15 @@ def generate_html_report(results, target_url):
                 border-radius: 4px;
                 font-weight: 500;
             }
+            .competitors-table {
+                margin-top: 2rem;
+            }
+            .competitor-rank {
+                color: #64748b;
+                font-weight: 500;
+                text-align: center;
+                width: 60px;
+            }
             .footer {
                 text-align: center;
                 margin-top: 2rem;
@@ -224,6 +240,7 @@ def generate_html_report(results, target_url):
                 </div>
             </div>
 
+            <div class="section-title">Rankings Overview</div>
             <table>
                 <thead>
                     <tr>
@@ -253,6 +270,31 @@ def generate_html_report(results, target_url):
                     {% endfor %}
                 </tbody>
             </table>
+
+            <div class="section-title">Top Competitors by Keyword</div>
+            {% for keyword in keywords %}
+            <table class="competitors-table">
+                <thead>
+                    <tr>
+                        <th colspan="3">{{ keyword }}</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 80px">Rank</th>
+                        <th>Domain</th>
+                        <th style="width: 120px">Location</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in competitor_data.get(keyword, []) %}
+                    <tr>
+                        <td class="competitor-rank">#{{ result.rank }}</td>
+                        <td>{{ result.domain }}</td>
+                        <td>{{ result.location }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endfor %}
         </div>
     </body>
     </html>
@@ -264,6 +306,22 @@ def generate_html_report(results, target_url):
     
     # Create ranking matrix
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
+    
+    # Process competitor data
+    competitor_data = {}
+    for result in results:
+        keyword = result['keyword']
+        if keyword not in competitor_data:
+            competitor_data[keyword] = []
+            
+        # Get unique competitors across all locations for this keyword
+        competitors = result['organic_results'][:3]
+        for rank, comp in enumerate(competitors, 1):
+            competitor_data[keyword].append({
+                'rank': rank,
+                'domain': comp.get('domain', 'N/A'),
+                'location': result['location']
+            })
     
     template = jinja2.Template(template_string)
     total_queries = len(results)
@@ -279,7 +337,8 @@ def generate_html_report(results, target_url):
         results=results,
         keywords=keywords,
         locations=locations,
-        ranking_matrix=ranking_matrix
+        ranking_matrix=ranking_matrix,
+        competitor_data=competitor_data
     )
     
     return html_report
