@@ -109,129 +109,87 @@ def generate_html_report(results, target_url):
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>SEO Analysis Report</title>
         <style>
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 2rem;
-            }
-            .header {
-                text-align: center;
-                padding: 2rem;
-                background: #f8fafc;
-                border-radius: 8px;
-                margin-bottom: 2rem;
-            }
-            .metrics {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 1rem;
-                margin-bottom: 2rem;
-            }
-            .metric-card {
-                background: #fff;
-                padding: 1.5rem;
-                border-radius: 8px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                text-align: center;
-            }
-            .metric-value {
-                font-size: 2rem;
-                font-weight: bold;
-                color: #3b82f6;
-            }
+            /* ... (keep existing styles) ... */
+            
+            /* Add these new table styles */
             table {
                 width: 100%;
                 border-collapse: collapse;
                 margin: 2rem 0;
+                font-size: 14px;
             }
             th, td {
-                padding: 0.75rem;
+                padding: 8px;
                 border: 1px solid #e2e8f0;
+                text-align: center;
             }
             th {
                 background: #f8fafc;
                 font-weight: 600;
+                white-space: nowrap;
             }
-            .ranking-good {
-                color: #166534;
-                background: #dcfce7;
-                padding: 0.25rem 0.5rem;
-                border-radius: 4px;
+            tr:nth-child(even) {
+                background-color: #f8fafc;
             }
-            .ranking-bad {
-                color: #991b1b;
-                background: #fee2e2;
-                padding: 0.25rem 0.5rem;
-                border-radius: 4px;
+            .location-cell {
+                text-align: left;
+                font-weight: 500;
+                background-color: #f8fafc;
             }
-            .footer {
-                text-align: center;
-                margin-top: 3rem;
-                padding-top: 2rem;
-                border-top: 1px solid #e2e8f0;
-                color: #64748b;
+            .ranking-cell {
+                font-family: monospace;
+            }
+            .n-a {
+                color: #666;
+                font-style: italic;
             }
         </style>
     </head>
     <body>
-        <div class="header">
-            <h1>SEO Rankings Analysis Report</h1>
-            <p>Generated on {{ timestamp }}</p>
-            <p>Target URL: {{ target_url }}</p>
-        </div>
-
-        <div class="metrics">
-            <div class="metric-card">
-                <h3>Total Queries</h3>
-                <div class="metric-value">{{ total_queries }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>First Page Rankings</h3>
-                <div class="metric-value">{{ ranked_queries }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>Ranking Rate</h3>
-                <div class="metric-value">{{ ranking_rate }}%</div>
-            </div>
-        </div>
+        <!-- ... (keep header and metrics sections) ... -->
 
         <h2>Rankings Overview</h2>
         <table>
             <thead>
                 <tr>
                     <th>Location</th>
-                    <th>Keyword</th>
-                    <th>Position</th>
-                    <th>Top Competitor</th>
+                    {% for keyword in keywords %}
+                    <th>{{ keyword }}</th>
+                    {% endfor %}
                 </tr>
             </thead>
             <tbody>
-                {% for result in results %}
+                {% for location in locations %}
                 <tr>
-                    <td>{{ result.location }}</td>
-                    <td>{{ result.keyword }}</td>
-                    <td>
-                        {% if '#' in result.target_position %}
-                        <span class="ranking-good">{{ result.target_position }}</span>
+                    <td class="location-cell">{{ location }}</td>
+                    {% for keyword in keywords %}
+                    <td class="ranking-cell">
+                        {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
+                        {% if position == 'n/a' %}
+                        <span class="n-a">n/a</span>
+                        {% elif '#' in position %}
+                        <span class="ranking-good">{{ position }}</span>
                         {% else %}
-                        <span class="ranking-bad">{{ result.target_position }}</span>
+                        <span class="ranking-bad">{{ position }}</span>
                         {% endif %}
                     </td>
-                    <td>{{ result.organic_results[0].domain if result.organic_results else 'N/A' }}</td>
+                    {% endfor %}
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
-        <div class="footer">
-            <p>Generated using SEO Rankings Analyzer Pro</p>
-        </div>
+        <!-- ... (keep footer) ... -->
     </body>
     </html>
     """
+    
+    # Process data for the template
+    keywords = sorted(set(r['keyword'] for r in results))
+    locations = sorted(set(r['location'] for r in results))
+    
+    # Create ranking matrix
+    ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
     
     template = jinja2.Template(template_string)
     total_queries = len(results)
@@ -244,7 +202,10 @@ def generate_html_report(results, target_url):
         total_queries=total_queries,
         ranked_queries=ranked_queries,
         ranking_rate=ranking_rate,
-        results=results
+        results=results,
+        keywords=keywords,
+        locations=locations,
+        ranking_matrix=ranking_matrix
     )
     
     return html_report
