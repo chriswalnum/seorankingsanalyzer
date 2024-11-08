@@ -228,7 +228,6 @@ def generate_html_report(results, target_url):
 
         <div class="footer">
             <p>Generated using SEO Rankings Analyzer Pro</p>
-            <p>Analysis completed in {{ analysis_duration }} seconds</p>
         </div>
     </body>
     </html>
@@ -271,17 +270,15 @@ def main():
         if target_url:
             target_url = target_url.replace('http://', '').replace('https://', '').replace('www.', '').rstrip('/')
 
-        # Keywords input with example
+        # Keywords input
         st.markdown("### Keywords")
-        st.markdown("Enter one keyword per line. Example:")
-        st.code("hvac installation\nboiler replacement")
-        keywords = st.text_area("", placeholder="Enter your keywords here")
+        st.markdown("Enter one keyword per line")
+        keywords = st.text_area("", placeholder="Enter your keywords here", key="keywords")
         
-        # Locations input with example
+        # Locations input
         st.markdown("### Locations")
-        st.markdown("Enter one location per line (City, State format). Example:")
-        st.code("Manchester, CT\nBolton, CT")
-        locations = st.text_area("", placeholder="Enter your locations here")
+        st.markdown("Enter locations in City, State format, one per line")
+        locations = st.text_area("", placeholder="Enter your locations here", key="locations")
 
         analyze_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
@@ -372,7 +369,7 @@ def main():
         
         # Summary metrics with enhanced styling
         st.markdown("### 📊 Analysis Summary")
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         total_queries = len(results)
         ranked_queries = len([r for r in results if '#' in r['target_position']])
         
@@ -402,16 +399,6 @@ def main():
                     <h4>Ranking Rate</h4>
                     <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
                         {(ranked_queries/total_queries*100):.1f}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col4:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Analysis Duration</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {st.session_state.analysis_duration}s
                     </div>
                 </div>""",
                 unsafe_allow_html=True
@@ -461,7 +448,7 @@ def main():
         col1, col2, col3 = st.columns(3)
         
         # Generate HTML report
-        html_report = generate_html_report(results, target_url, st.session_state.analysis_duration)
+        html_report = generate_html_report(results, target_url)
         
         with col1:
             st.download_button(
@@ -493,4 +480,4 @@ def main():
             )
 
 if __name__ == "__main__":
-    main()  
+    main()    
