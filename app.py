@@ -109,77 +109,151 @@ def generate_html_report(results, target_url):
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>SEO Analysis Report</title>
         <style>
-            /* ... (keep existing styles) ... */
-            
-            /* Add these new table styles */
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                margin: 0 auto;
+                padding: 2rem;
+                max-width: 800px;
+                background-color: #f8fafc;
+            }
+            .container {
+                background: white;
+                padding: 2rem;
+                border-radius: 8px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 2rem;
+            }
+            .header h1 {
+                color: #1e3a8a;
+                font-size: 24px;
+                margin-bottom: 8px;
+            }
+            .header p {
+                color: #64748b;
+                margin: 4px 0;
+            }
+            .metrics {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }
+            .metric-card {
+                background: #f8fafc;
+                padding: 1rem;
+                border-radius: 6px;
+                text-align: center;
+            }
+            .metric-card h3 {
+                font-size: 14px;
+                color: #64748b;
+                margin: 0 0 8px 0;
+            }
+            .metric-value {
+                font-size: 24px;
+                font-weight: bold;
+                color: #1e3a8a;
+            }
             table {
                 width: 100%;
                 border-collapse: collapse;
-                margin: 2rem 0;
+                margin: 1rem 0;
                 font-size: 14px;
+                background: white;
             }
             th, td {
-                padding: 8px;
+                padding: 8px 12px;
                 border: 1px solid #e2e8f0;
-                text-align: center;
             }
             th {
-                background: #f8fafc;
+                background: #f1f5f9;
                 font-weight: 600;
-                white-space: nowrap;
-            }
-            tr:nth-child(even) {
-                background-color: #f8fafc;
+                text-align: left;
+                color: #1e293b;
             }
             .location-cell {
-                text-align: left;
                 font-weight: 500;
-                background-color: #f8fafc;
             }
-            .ranking-cell {
-                font-family: monospace;
+            .ranking-good {
+                color: #166534;
+                background: #dcfce7;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
             }
-            .n-a {
-                color: #666;
-                font-style: italic;
+            .ranking-bad {
+                color: #991b1b;
+                background: #fee2e2;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 2rem;
+                color: #64748b;
+                font-size: 12px;
             }
         </style>
     </head>
     <body>
-        <!-- ... (keep header and metrics sections) ... -->
+        <div class="container">
+            <div class="header">
+                <h1>SEO Rankings Analysis Report</h1>
+                <p>{{ target_url }}</p>
+                <p>Generated on {{ timestamp }}</p>
+            </div>
 
-        <h2>Rankings Overview</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Location</th>
-                    {% for keyword in keywords %}
-                    <th>{{ keyword }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for location in locations %}
-                <tr>
-                    <td class="location-cell">{{ location }}</td>
-                    {% for keyword in keywords %}
-                    <td class="ranking-cell">
-                        {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
-                        {% if position == 'n/a' %}
-                        <span class="n-a">n/a</span>
-                        {% elif '#' in position %}
-                        <span class="ranking-good">{{ position }}</span>
-                        {% else %}
-                        <span class="ranking-bad">{{ position }}</span>
-                        {% endif %}
-                    </td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+            <div class="metrics">
+                <div class="metric-card">
+                    <h3>Total Queries</h3>
+                    <div class="metric-value">{{ total_queries }}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>First Page Rankings</h3>
+                    <div class="metric-value">{{ ranked_queries }}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Ranking Rate</h3>
+                    <div class="metric-value">{{ ranking_rate }}%</div>
+                </div>
+            </div>
 
-        <!-- ... (keep footer) ... -->
+            <table>
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        {% for keyword in keywords %}
+                        <th>{{ keyword }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for location in locations %}
+                    <tr>
+                        <td class="location-cell">{{ location }}</td>
+                        {% for keyword in keywords %}
+                        <td style="text-align: center">
+                            {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
+                            {% if position == 'n/a' %}
+                            <span style="color: #94a3b8">-</span>
+                            {% elif '#' in position %}
+                            <span class="ranking-good">{{ position }}</span>
+                            {% else %}
+                            <span class="ranking-bad">{{ position }}</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </body>
     </html>
     """
