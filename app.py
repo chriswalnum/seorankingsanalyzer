@@ -8,6 +8,9 @@ from geopy.geocoders import Nominatim
 import jinja2
 import base64
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from ratelimit import limits, sleep_and_retry
+import threading
 
 # Page config
 st.set_page_config(
@@ -77,6 +80,56 @@ def validate_location(location):
         return location_data is not None
     except Exception:
         return False
+        
+@sleep_and_retry
+@limits(calls=5, period=1)
+def rate_limited_api_call(base_url, params):
+    """Make a rate-limited API call"""
+    response = requests.get(base_url, params=params)
+    response.raise_for_status()
+    return response.json()
+
+def process_query(query, target_url):
+    """Process a single SERP query and return results"""
+    serp_data = fetch_serp_data(query)
+    if not serp_data:
+        return None
+        
+    organic_results = serp_data.get('organic_results', [])
+    local_results = serp_data.get('local_results', [])
+    
+    position = "Not on Page 1"
+    for idx, result in enumerate(organic_results, 1):
+        if target_url in result.get('domain', '').lower():
+            position = f"#{idx}"
+            break
+    
+    return {
+        'keyword': query['keyword'],
+        'location': query['location'],
+        'target_position': position,
+        'organic_results': organic_results[:3],
+        'local_results': local_results[:3]
+    }     
+
+def fetch_serp_data(query):
+    """Fetch SERP data from ValueSERP API with rate limiting"""
+    base_url = "https://api.valueserp.com/search"
+    params = {
+        'api_key': st.secrets["VALUESERP_API_KEY"],
+        'q': query['query'],
+        'location': query['location'],
+        'google_domain': 'google.com',
+        'gl': 'us',
+        'hl': 'en',
+        'num': 10,
+        'output': 'json'
+    }
+    
+    try:
+        return rate_limited_api_call(base_url, params)
+    except requests.exceptions.RequestException:
+        return None
 
 def fetch_serp_data(query):
     """Fetch SERP data from ValueSERP API"""
@@ -342,6 +395,43 @@ def generate_html_report(results, target_url):
     )
     
     return html_report
+
+def parallel_process_queries(search_queries, target_url, progress_text, progress_bar):
+    """Process queries in parallel with progress tracking"""
+    results = []
+    completed = 0
+    total = len(search_queries)
+    
+    # Create a thread-safe lock for updating progress
+    progress_lock = threading.Lock()
+    
+    def update_progress():
+        nonlocal completed
+        with progress_lock:
+            completed += 1
+            progress = completed / total
+            progress_bar.progress(progress)
+            progress_text.text(f"Processed {completed}/{total} queries...")
+    
+    # Use ThreadPoolExecutor for parallel processing
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_query = {
+            executor.submit(process_query, query, target_url): query 
+            for query in search_queries
+        }
+        
+        for future in as_completed(future_to_query):
+            query = future_to_query[future]
+            try:
+                result = future.result()
+                if result:
+                    results.append(result)
+            except Exception as e:
+                st.warning(f"Error processing query '{query['keyword']}' in {query['location']}: {str(e)}")
+            update_progress()
+    
+    return results
+    
 def main():
     # Header with professional styling
     st.title("🎯 SEO Rankings Analyzer Pro")
@@ -377,7 +467,7 @@ def main():
         analyze_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
     # Main content area with improved error handling and progress tracking
-    if analyze_button:
+if analyze_button:
         if not all([target_url, keywords, locations]):
             st.error("Please fill in all required fields before running the analysis.")
             return
@@ -404,11 +494,26 @@ def main():
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
                 valid_locations = []
-                for i, loc in enumerate(processed_locations):
-                    progress_text.text(f"Validating {loc['city']}, {loc['state']}...")
-                    if validate_location(loc):
-                        valid_locations.append(loc)
-                    progress_bar.progress((i + 1) / len(processed_locations))
+                
+                def validate_location_batch(locations):
+                    return [loc for loc in locations if validate_location(loc)]
+                
+                # Process location validation in parallel
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    chunk_size = max(1, len(processed_locations) // 3)
+                    location_chunks = [processed_locations[i:i + chunk_size] 
+                                    for i in range(0, len(processed_locations), chunk_size)]
+                    
+                    future_to_chunk = {executor.submit(validate_location_batch, chunk): i 
+                                     for i, chunk in enumerate(location_chunks)}
+                    
+                    completed_chunks = 0
+                    for future in as_completed(future_to_chunk):
+                        chunk_valid_locations = future.result()
+                        valid_locations.extend(chunk_valid_locations)
+                        completed_chunks += 1
+                        progress_bar.progress(completed_chunks / len(location_chunks))
+                        progress_text.text(f"Validated {completed_chunks}/{len(location_chunks)} location groups...")
 
             if not valid_locations:
                 st.error("❌ No valid locations provided. Please check your location format and try again.")
@@ -425,37 +530,19 @@ def main():
                         'query': f"{keyword} {location_string}"
                     })
 
-            # Analyze rankings with detailed progress tracking
+            # Analyze rankings with parallel processing
             with st.expander("🔍 Rankings Analysis Progress", expanded=True):
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
-                results = []
-                for i, query in enumerate(search_queries):
-                    progress_text.text(f"Analyzing '{query['keyword']}' in {query['location']}...")
-                    serp_data = fetch_serp_data(query)
-                    if serp_data:
-                        organic_results = serp_data.get('organic_results', [])
-                        local_results = serp_data.get('local_results', [])
-                        
-                        position = "Not on Page 1"
-                        for idx, result in enumerate(organic_results, 1):
-                            if target_url in result.get('domain', '').lower():
-                                position = f"#{idx}"
-                                break
-                        
-                        results.append({
-                            'keyword': query['keyword'],
-                            'location': query['location'],
-                            'target_position': position,
-                            'organic_results': organic_results[:3],
-                            'local_results': local_results[:3]
-                        })
-                    progress_bar.progress((i + 1) / len(search_queries))
+                results = parallel_process_queries(search_queries, target_url, progress_text, progress_bar)
 
             analysis_duration = round(time.time() - st.session_state.start_time, 1)
             st.session_state.results = results
             st.session_state.analysis_complete = True
             st.session_state.analysis_duration = analysis_duration
+            
+            # Add timing information
+            st.info(f"✨ Analysis completed in {analysis_duration} seconds")
 
     # Display results if analysis is complete
     if st.session_state.analysis_complete and hasattr(st.session_state, 'results'):
