@@ -329,7 +329,7 @@ def generate_html_report(results, target_url):
     ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
     
     html_report = template.render(
-        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        timestamp=datetime.now(pytz.timezone('America/New_York')).strftime("%Y-%m-%d %I:%M:%S %p EST"),
         target_url=target_url,
         total_queries=total_queries,
         ranked_queries=ranked_queries,
