@@ -242,18 +242,19 @@ def generate_html_report(results, target_url):
                 margin: 1rem 0;
                 font-size: 14px;
                 background: white;
-                table-layout: fixed;
             }
             th, td {
                 padding: 8px 12px;
                 border: 1px solid #e2e8f0;
-                min-width: 120px;
-                white-space: nowrap;
-                overflow: visible;
+            }
+            th {
+                background: #f1f5f9;
+                font-weight: 600;
+                text-align: left;
+                color: #1e293b;
             }
             .location-cell {
                 font-weight: 500;
-                min-width: 140px;
             }
             .ranking-good {
                 color: #166534;
@@ -277,6 +278,12 @@ def generate_html_report(results, target_url):
                 font-weight: 500;
                 text-align: center;
                 width: 60px;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 2rem;
+                color: #64748b;
+                font-size: 12px;
             }
         </style>
     </head>
@@ -377,6 +384,7 @@ def generate_html_report(results, target_url):
         if keyword not in competitor_data:
             competitor_data[keyword] = []
             
+        # Get unique competitors across all locations for this keyword
         competitors = result['organic_results'][:3]
         for rank, comp in enumerate(competitors, 1):
             competitor_data[keyword].append({
