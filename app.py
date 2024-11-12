@@ -179,12 +179,109 @@ def generate_html_report(results, target_url):
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>SEO Analysis Report</title>
         <style>
-            /* Previous styles remain the same */
-
-            /* New style for table groups */
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                margin: 0 auto;
+                padding: 2rem;
+                max-width: 800px;
+                background-color: #f8fafc;
+            }
+            .container {
+                background: white;
+                padding: 2rem;
+                border-radius: 8px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 2rem;
+            }
+            .header h1 {
+                color: #1e3a8a;
+                font-size: 24px;
+                margin-bottom: 8px;
+            }
+            .header p {
+                color: #64748b;
+                margin: 4px 0;
+            }
+            .metrics {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }
+            .metric-card {
+                background: #f8fafc;
+                padding: 1rem;
+                border-radius: 6px;
+                text-align: center;
+            }
+            .metric-card h3 {
+                font-size: 14px;
+                color: #64748b;
+                margin: 0 0 8px 0;
+            }
+            .metric-value {
+                font-size: 24px;
+                font-weight: bold;
+                color: #1e3a8a;
+            }
+            .section-title {
+                color: #1e3a8a;
+                font-size: 18px;
+                margin: 2rem 0 1rem 0;
+                padding-bottom: 0.5rem;
+                border-bottom: 2px solid #e2e8f0;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 1rem 0;
+                font-size: 14px;
+                background: white;
+            }
+            th, td {
+                padding: 8px 12px;
+                border: 1px solid #e2e8f0;
+            }
+            th {
+                background: #f1f5f9;
+                font-weight: 600;
+                text-align: left;
+                color: #1e293b;
+            }
+            .location-cell {
+                font-weight: 500;
+            }
+            .ranking-good {
+                color: #166534;
+                background: #dcfce7;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
+            .ranking-bad {
+                color: #991b1b;
+                background: #fee2e2;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
             .table-group {
                 margin-bottom: 2rem;
                 page-break-inside: avoid;
+            }
+            .competitors-table {
+                margin-top: 2rem;
+            }
+            .competitor-rank {
+                color: #64748b;
+                font-weight: 500;
+                text-align: center;
+                width: 60px;
             }
         </style>
     </head>
@@ -197,7 +294,18 @@ def generate_html_report(results, target_url):
             </div>
 
             <div class="metrics">
-                <!-- Previous metrics code remains the same -->
+                <div class="metric-card">
+                    <h3>Total Queries</h3>
+                    <div class="metric-value">{{ total_queries }}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>First Page Rankings</h3>
+                    <div class="metric-value">{{ ranked_queries }}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Ranking Rate</h3>
+                    <div class="metric-value">{{ ranking_rate }}%</div>
+                </div>
             </div>
 
             <div class="section-title">Rankings Overview</div>
@@ -235,13 +343,36 @@ def generate_html_report(results, target_url):
             </div>
             {% endfor %}
 
-            <!-- Rest of template remains exactly the same -->
+            <div class="section-title">Top Competitors by Keyword</div>
+            {% for keyword in keywords %}
+            <table class="competitors-table">
+                <thead>
+                    <tr>
+                        <th colspan="3">{{ keyword }}</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 80px">Rank</th>
+                        <th>Domain</th>
+                        <th style="width: 120px">Location</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in competitor_data.get(keyword, []) %}
+                    <tr>
+                        <td class="competitor-rank">#{{ result.rank }}</td>
+                        <td>{{ result.domain }}</td>
+                        <td>{{ result.location }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endfor %}
         </div>
     </body>
     </html>
     """
-
-    # Rest of the function remains exactly the same
+    
+    # Process data for the template
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
     
@@ -262,7 +393,7 @@ def generate_html_report(results, target_url):
                 'domain': comp.get('domain', 'N/A'),
                 'location': result['location']
             })
-
+    
     template = jinja2.Template(template_string)
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
