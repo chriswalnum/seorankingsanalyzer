@@ -252,10 +252,9 @@ def generate_html_report(results, target_url):
                 page-break-inside: avoid;
             }
             table {
-                width: 100%;
                 border-collapse: collapse;
                 margin: 1rem 0;
-                font-size: 12px;
+                font-size: 11px;
                 background: white;
             }
             th, td {
