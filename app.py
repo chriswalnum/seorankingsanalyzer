@@ -19,16 +19,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Version info
-VERSION = "1.2.0"
-st.markdown(f"""
-    <div style='position: fixed; top: 10px; right: 30px; padding: 5px 10px; 
-    background-color: #f0f2f6; border-radius: 5px; font-size: 12px; 
-    color: #666; z-index: 1000;'>
-    v{VERSION}
-    </div>
-""", unsafe_allow_html=True)
-
 # Initialize session state
 if 'analysis_complete' not in st.session_state:
     st.session_state.analysis_complete = False
@@ -423,18 +413,13 @@ def generate_html_report(results, target_url):
     return html_report
 
 def main():
-
-# Version info
-VERSION = "1.2.0"
-
-# Header with professional styling and version number
-st.markdown(f"""
-    <h1 style='display: flex; align-items: center; justify-content: space-between;'>
-        <span>🎯 SEO Rankings Analyzer Pro</span>
-        <span style='font-size: 16px; color: #666; background-color: #f0f2f6; 
-        padding: 5px 10px; border-radius: 5px;'>v{VERSION}</span>
-    </h1>
-""", unsafe_allow_html=True)
+    # Header with professional styling
+    st.title("🎯 SEO Rankings Analyzer Pro")
+    st.markdown("""
+        <div class="info-box">
+            Analyze a website's search rankings across multiple locations with detailed insights.
+        </div>
+    """, unsafe_allow_html=True)
 
     # Sidebar for inputs with improved UX
     with st.sidebar:
