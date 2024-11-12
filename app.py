@@ -12,6 +12,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
 
+# Version tracking
+VERSION = "1.2.0"  # Added ZIP code support
+
 # Page config
 st.set_page_config(
     page_title="SEO Rankings Analyzer Pro",
@@ -453,8 +456,9 @@ def generate_html_report(results, target_url):
     return html_report
 
 def main():
-    # Header with professional styling
+# Header with professional styling and version
     st.title("🎯 SEO Rankings Analyzer Pro")
+    st.caption(f"v{VERSION}")
     st.markdown("""
         <div class="info-box">
             Analyze a website's search rankings across multiple locations with detailed insights.
