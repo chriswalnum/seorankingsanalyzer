@@ -526,9 +526,13 @@ def main():
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
                 valid_locations = []
-                
-                def validate_location_batch(locations):
-                    return [loc for loc in locations if validate_location(loc)]
+def validate_location_batch(locations):
+    results = []
+    for loc in locations:
+        is_valid, formatted_location = validate_location(loc)
+        if is_valid and formatted_location:
+            results.append(formatted_location)
+    return results
                 
                 # Process location validation in parallel
                 with ThreadPoolExecutor(max_workers=3) as executor:
@@ -551,16 +555,16 @@ def main():
                 st.error("❌ No valid locations provided. Please check your location format and try again.")
                 return
 
-            # Create search queries
-            search_queries = []
-            for location in valid_locations:
-                location_string = f"{location['city']}, {location['state']}"
-                for keyword in keyword_list:
-                    search_queries.append({
-                        'keyword': keyword,
-                        'location': location_string,
-                        'query': f"{keyword} {location_string}"
-                    })
+# Create search queries
+search_queries = []
+for location in valid_locations:
+    # location is already a formatted string from validate_location
+    for keyword in keyword_list:
+        search_queries.append({
+            'keyword': keyword,
+            'location': location,  # Use the formatted location string directly
+            'query': f"{keyword} {location}"
+        })
 
             # Analyze rankings with parallel processing
             with st.expander("🔍 Rankings Analysis Progress", expanded=True):
