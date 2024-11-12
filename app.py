@@ -1,4 +1,4 @@
-# Version 1.2.0
+# Version 1.2.1
 import streamlit as st
 import pandas as pd
 import requests
