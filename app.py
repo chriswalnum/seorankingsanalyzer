@@ -605,18 +605,20 @@ def main():
                         st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
                         st.markdown("---")
 
-        # Export options
+# Export options
         st.subheader("📥 Export Options")
         col1, col2, col3 = st.columns(3)
         
-        # Generate HTML report
-        html_report = generate_html_report(results, target_url)
+        # Clean domain name for filename
+        clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
+        timestamp = datetime.now().strftime("%Y%m%d")
+        base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
         
         with col1:
             st.download_button(
                 label="📄 Download HTML Report",
                 data=html_report,
-                file_name="seo_analysis_report.html",
+                file_name=f"{base_filename}.html",
                 mime="text/html"
             )
         
@@ -625,7 +627,7 @@ def main():
             st.download_button(
                 label="📊 Download CSV",
                 data=csv,
-                file_name="seo_analysis.csv",
+                file_name=f"{base_filename}.csv",
                 mime="text/csv"
             )
         
@@ -637,7 +639,7 @@ def main():
             st.download_button(
                 label="📘 Download Excel",
                 data=excel_data,
-                file_name="seo_analysis.xlsx",
+                file_name=f"{base_filename}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
