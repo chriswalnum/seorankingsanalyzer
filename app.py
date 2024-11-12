@@ -605,7 +605,10 @@ def main():
                         st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
                         st.markdown("---")
 
-# Export options
+# Generate HTML report
+        html_report = generate_html_report(results, target_url)
+
+        # Export options
         st.subheader("📥 Export Options")
         col1, col2, col3 = st.columns(3)
         
