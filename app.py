@@ -255,7 +255,7 @@ def generate_html_report(results, target_url):
                 width: 100%;
                 border-collapse: collapse;
                 margin: 1rem 0;
-                font-size: 14px;
+                font-size: 12px;
                 background: white;
             }
             th, td {
