@@ -185,15 +185,15 @@ def generate_html_report(results, target_url):
                 color: #333;
                 margin: 0 auto;
                 padding: 2rem;
-                max-width: 800px;
+                max-width: 1200px;    /* Increased from 800px */
                 background-color: #f8fafc;
+            }
             .container {
                 background: white;
                 padding: 2rem;
                 border-radius: 8px;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                max-width: 1000px;     /* Increased from 800px */
-                margin: 0 auto;        /* Added to center the wider container */
+                max-width: 1200px;    /* Increased from 800px */
             }
 
             body {
