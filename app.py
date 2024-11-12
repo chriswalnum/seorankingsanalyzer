@@ -423,13 +423,18 @@ def generate_html_report(results, target_url):
     return html_report
 
 def main():
-    # Header with professional styling
-    st.title("🎯 SEO Rankings Analyzer Pro")
-    st.markdown("""
-        <div class="info-box">
-            Analyze a website's search rankings across multiple locations with detailed insights.
-        </div>
-    """, unsafe_allow_html=True)
+
+# Version info
+VERSION = "1.2.0"
+
+# Header with professional styling and version number
+st.markdown(f"""
+    <h1 style='display: flex; align-items: center; justify-content: space-between;'>
+        <span>🎯 SEO Rankings Analyzer Pro</span>
+        <span style='font-size: 16px; color: #666; background-color: #f0f2f6; 
+        padding: 5px 10px; border-radius: 5px;'>v{VERSION}</span>
+    </h1>
+""", unsafe_allow_html=True)
 
     # Sidebar for inputs with improved UX
     with st.sidebar:
