@@ -19,6 +19,16 @@ st.set_page_config(
     layout="wide"
 )
 
+# Version info
+VERSION = "1.2.0"
+st.markdown(f"""
+    <div style='position: fixed; top: 10px; right: 30px; padding: 5px 10px; 
+    background-color: #f0f2f6; border-radius: 5px; font-size: 12px; 
+    color: #666; z-index: 1000;'>
+    v{VERSION}
+    </div>
+""", unsafe_allow_html=True)
+
 # Initialize session state
 if 'analysis_complete' not in st.session_state:
     st.session_state.analysis_complete = False
