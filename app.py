@@ -13,6 +13,56 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
 
+def estimate_text_width(text, font_size=14, char_width_multiplier=0.6):
+    """Estimate the width of text in pixels based on font size and character count"""
+    return len(str(text)) * font_size * char_width_multiplier
+
+def split_keywords_into_tables(keywords, locations, ranking_matrix, max_width=800):
+    """Split keywords into groups that will fit within the max_width"""
+    # Start with padding and location column width
+    padding = 24  # 12px padding on each side
+    location_width = max(
+        estimate_text_width("Location", 14),  # Header
+        max(estimate_text_width(loc, 14) for loc in locations)  # Longest location
+    ) + padding
+    
+    # Calculate width needed for each keyword column
+    keyword_widths = {}
+    for keyword in keywords:
+        # Calculate max width needed for this keyword column
+        column_content = [keyword]  # Start with header
+        for location in locations:
+            position = ranking_matrix.get((location, keyword), 'Not on Page 1')
+            column_content.append(position)
+        
+        # Get max width needed for this column
+        keyword_widths[keyword] = max(
+            estimate_text_width(content, 14) for content in column_content
+        ) + padding
+
+    # Group keywords into tables
+    tables = []
+    current_table = []
+    current_width = location_width
+
+    for keyword in keywords:
+        new_width = current_width + keyword_widths[keyword]
+        
+        if new_width <= max_width:
+            current_table.append(keyword)
+            current_width = new_width
+        else:
+            if current_table:  # Don't create empty tables
+                tables.append(current_table)
+            current_table = [keyword]
+            current_width = location_width + keyword_widths[keyword]
+
+    # Add the last table if it has any keywords
+    if current_table:
+        tables.append(current_table)
+
+    return tables
+
 # Page config
 st.set_page_config(
     page_title="SEO Rankings Analyzer Pro",
@@ -276,10 +326,26 @@ def generate_html_report(results, target_url):
     # Create ranking matrix
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
     
+    # Process competitor data
+    competitor_data = {}
+    for result in results:
+        keyword = result['keyword']
+        if keyword not in competitor_data:
+            competitor_data[keyword] = []
+            
+        # Get unique competitors across all locations for this keyword
+        competitors = result['organic_results'][:3]
+        for rank, comp in enumerate(competitors, 1):
+            competitor_data[keyword].append({
+                'rank': rank,
+                'domain': comp.get('domain', 'N/A'),
+                'location': result['location']
+            })
+    
     # Split keywords into table groups based on width
     keyword_groups = split_keywords_into_tables(keywords, locations, ranking_matrix)
     
-    # Rest of the function remains the same, but add keyword_groups to template context
+    # Render template with all required data
     template = jinja2.Template(template_string)
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
@@ -296,7 +362,7 @@ def generate_html_report(results, target_url):
         locations=locations,
         ranking_matrix=ranking_matrix,
         competitor_data=competitor_data,
-        keyword_groups=keyword_groups  # Add this line
+        keyword_groups=keyword_groups
     )
     
     return html_report
