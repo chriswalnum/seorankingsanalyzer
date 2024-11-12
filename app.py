@@ -12,9 +12,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
 
-# Version tracking
-VERSION = "1.2.0"  # Added ZIP code support
-
 # Page config
 st.set_page_config(
     page_title="SEO Rankings Analyzer Pro",
@@ -75,55 +72,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def validate_location(location):
-    """
-    Validate if a location exists using GeoPy
-    Supports both 'city, state' and ZIP code formats
-    Returns tuple of (is_valid, formatted_location_string)
-    """
+    """Validate if a location exists using GeoPy"""
     geolocator = Nominatim(user_agent="seo_analysis_tool")
     try:
-        if isinstance(location, dict):  # City, State format
-            search_term = f"{location['city']}, {location['state']}, USA"
-        elif isinstance(location, str) and location.isdigit() and len(location) == 5:  # ZIP code
-            search_term = f"{location}, USA"
-        else:
-            return False, None
-            
+        search_term = f"{location['city']}, {location['state']}, USA"
         location_data = geolocator.geocode(search_term)
-        time.sleep(1)  # Respect geocoding service rate limits
-        
-        if not location_data:
-            return False, None
-            
-        # For ZIP codes, extract city and state from the geocoded result
-        if isinstance(location, str) and location.isdigit():
-            address_components = location_data.address.split(', ')
-            # Nominatim typically returns: [neighborhood/area], [city], [county], [state], [country], [postal code]
-            # We want to extract city and state
-            try:
-                # State is usually second from the end (before country)
-                state = [comp for comp in address_components if any(s in comp for s in [
-                    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 
-                    'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 
-                    'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 
-                    'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 
-                    'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 
-                    'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota', 
-                    'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 
-                    'Wisconsin', 'Wyoming'
-                ])][0]
-                # City is usually before county
-                city = address_components[address_components.index(state) - 2]
-                return True, f"{city}, {state}"
-            except (IndexError, ValueError):
-                return False, None
-                
-        # For city, state format, use the input format
-        return True, f"{location['city']}, {location['state']}"
-        
-    except Exception as e:
-        st.warning(f"Error validating location: {str(e)}")
-        return False, None
+        time.sleep(1)
+        return location_data is not None
+    except Exception:
+        return False
 
 @sleep_and_retry
 @limits(calls=5, period=1)
@@ -456,9 +413,8 @@ def generate_html_report(results, target_url):
     return html_report
 
 def main():
-# Header with professional styling and version
+    # Header with professional styling
     st.title("🎯 SEO Rankings Analyzer Pro")
-    st.caption(f"v{VERSION}")
     st.markdown("""
         <div class="info-box">
             Analyze a website's search rankings across multiple locations with detailed insights.
@@ -482,13 +438,11 @@ def main():
         st.markdown("### Keywords")
         st.markdown("Enter one keyword per line")
         keywords = st.text_area("", placeholder="Enter your keywords here", key="keywords")
-
-# Locations input with updated instructions
+        
+        # Locations input
         st.markdown("### Locations")
-        st.markdown("Enter one location per line in either format:\n" + 
-                   "- City, State (e.g. 'Seattle, WA')\n" +
-                   "- ZIP code (e.g. '98101')")
-        locations = st.text_area("", placeholder="Seattle, WA\n98101\nPortland, OR", key="locations")
+        st.markdown("Enter locations in City, State format, one per line")
+        locations = st.text_area("", placeholder="Enter your locations here", key="locations")
 
         analyze_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
@@ -508,18 +462,12 @@ def main():
             # Process locations
             processed_locations = []
             for loc in location_list:
-                if loc.strip().isdigit() and len(loc.strip()) == 5:  # ZIP code
-                    processed_locations.append(loc.strip())
-                else:  # City, State format
-                    parts = [p.strip() for p in loc.split(',')]
-                    if len(parts) == 2:
-                        processed_locations.append({
-                            'city': parts[0],
-                            'state': parts[1]
-                        })
-                    else:
-                        st.warning(f"Skipping invalid location format: '{loc}'. Please use 'City, State' or 5-digit ZIP code format.")
-                        continue        
+                parts = [p.strip() for p in loc.split(',')]
+                if len(parts) == 2:
+                    processed_locations.append({
+                        'city': parts[0],
+                        'state': parts[1].strip()
+                    })
 
             # Validate locations with progress bar
             with st.expander("📍 Location Validation Progress", expanded=True):
