@@ -170,38 +170,116 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     return results
 
 def generate_html_report(results, target_url):
-    # Previous code remains the same until the style section
+    """Generate a professional HTML report using Jinja2"""
     template_string = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <!-- Previous head content remains the same -->
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SEO Analysis Report</title>
         <style>
-            /* Previous styles remain the same */
-            
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                margin: 0 auto;
+                padding: 2rem;
+                max-width: 800px;
+                background-color: #f8fafc;
+            }
+            .container {
+                background: white;
+                padding: 2rem;
+                border-radius: 8px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 2rem;
+            }
+            .header h1 {
+                color: #1e3a8a;
+                font-size: 24px;
+                margin-bottom: 8px;
+            }
+            .header p {
+                color: #64748b;
+                margin: 4px 0;
+            }
+            .metrics {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }
+            .metric-card {
+                background: #f8fafc;
+                padding: 1rem;
+                border-radius: 6px;
+                text-align: center;
+            }
+            .metric-card h3 {
+                font-size: 14px;
+                color: #64748b;
+                margin: 0 0 8px 0;
+            }
+            .metric-value {
+                font-size: 24px;
+                font-weight: bold;
+                color: #1e3a8a;
+            }
+            .section-title {
+                color: #1e3a8a;
+                font-size: 18px;
+                margin: 2rem 0 1rem 0;
+                padding-bottom: 0.5rem;
+                border-bottom: 2px solid #e2e8f0;
+            }
             table {
                 width: 100%;
                 border-collapse: collapse;
                 margin: 1rem 0;
                 font-size: 14px;
                 background: white;
-                table-layout: fixed;  /* Added for consistent column widths */
+                table-layout: fixed;
             }
             th, td {
                 padding: 8px 12px;
                 border: 1px solid #e2e8f0;
-                min-width: 120px;     /* Added minimum width */
-                white-space: nowrap;   /* Prevent text wrapping */
+                min-width: 120px;
+                white-space: nowrap;
+                overflow: visible;
             }
             .location-cell {
                 font-weight: 500;
-                min-width: 140px;      /* Slightly wider for location column */
+                min-width: 140px;
             }
-            /* Rest of the styles remain the same */
+            .ranking-good {
+                color: #166534;
+                background: #dcfce7;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
+            .ranking-bad {
+                color: #991b1b;
+                background: #fee2e2;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
+            .competitors-table {
+                margin-top: 2rem;
+            }
+            .competitor-rank {
+                color: #64748b;
+                font-weight: 500;
+                text-align: center;
+                width: 60px;
+            }
         </style>
     </head>
-
-    # Rest of the function remains exactly the same
     <body>
         <div class="container">
             <div class="header">
@@ -226,39 +304,35 @@ def generate_html_report(results, target_url):
             </div>
 
             <div class="section-title">Rankings Overview</div>
-            {% for keyword_group in keywords|batch(5) %}
-            <div class="table-group">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Location</th>
-                            {% for keyword in keyword_group %}
-                            <th>{{ keyword }}</th>
-                            {% endfor %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for location in locations %}
-                        <tr>
-                            <td class="location-cell">{{ location }}</td>
-                            {% for keyword in keyword_group %}
-                            <td style="text-align: center">
-                                {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
-                                {% if position == 'n/a' %}
-                                <span style="color: #94a3b8">-</span>
-                                {% elif '#' in position %}
-                                <span class="ranking-good">{{ position }}</span>
-                                {% else %}
-                                <span class="ranking-bad">{{ position }}</span>
-                                {% endif %}
-                            </td>
-                            {% endfor %}
-                        </tr>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        {% for keyword in keywords %}
+                        <th>{{ keyword }}</th>
                         {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for location in locations %}
+                    <tr>
+                        <td class="location-cell">{{ location }}</td>
+                        {% for keyword in keywords %}
+                        <td style="text-align: center">
+                            {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
+                            {% if position == 'n/a' %}
+                            <span style="color: #94a3b8">-</span>
+                            {% elif '#' in position %}
+                            <span class="ranking-good">{{ position }}</span>
+                            {% else %}
+                            <span class="ranking-bad">{{ position }}</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
 
             <div class="section-title">Top Competitors by Keyword</div>
             {% for keyword in keywords %}
