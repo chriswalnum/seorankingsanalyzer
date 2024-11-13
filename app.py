@@ -1,4 +1,4 @@
-# Version 1.2.2
+# Version 1.2.3
 import streamlit as st
 import pandas as pd
 import requests
@@ -15,7 +15,7 @@ import threading
 
 # Page config
 st.set_page_config(
-    page_title="SEO Rankings Analyzer Pro",
+    page_title="SEO Rankings Analyzer Pro - Test",
     page_icon="📊",
     layout="wide"
 )
@@ -76,7 +76,12 @@ def validate_location(location):
     """Validate if a location exists using GeoPy"""
     geolocator = Nominatim(user_agent="seo_analysis_tool")
     try:
-        search_term = f"{location['city']}, {location['state']}, USA"
+        # Check if input is a ZIP code (5 digits)
+        if isinstance(location, str) and location.isdigit() and len(location) == 5:
+            search_term = f"{location}, USA"
+        else:  # city_state dict
+            search_term = f"{location['city']}, {location['state']}, USA"
+            
         location_data = geolocator.geocode(search_term)
         time.sleep(1)
         return location_data is not None
@@ -449,7 +454,9 @@ def main():
         
         # Locations input
         st.markdown("### Locations")
-        st.markdown("Enter locations in City, State format, one per line")
+        st.markdown("""Enter one location per line:
+- City, State (e.g., New York, NY)
+- ZIP code (e.g., 90210)""")
         locations = st.text_area("", placeholder="Enter your locations here", key="locations")
 
         analyze_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
@@ -469,13 +476,46 @@ def main():
             
             # Process locations
             processed_locations = []
+            invalid_locations = []
             for loc in location_list:
-                parts = [p.strip() for p in loc.split(',')]
-                if len(parts) == 2:
-                    processed_locations.append({
-                        'city': parts[0],
-                        'state': parts[1].strip()
-                    })
+                loc = loc.strip()
+                if not loc:  # Skip empty lines
+                    continue
+                    
+                # Check if it's a ZIP code
+                if loc.isdigit():
+                    if len(loc) == 5:
+                        processed_locations.append(loc)  # Store ZIP code as string
+                    else:
+                        invalid_locations.append(f"• {loc} (invalid ZIP code - must be 5 digits)")
+                # Check if it's City, State format
+                else:
+                    parts = [p.strip() for p in loc.split(',')]
+                    if len(parts) == 2:
+                        processed_locations.append({
+                            'city': parts[0],
+                            'state': parts[1].strip()
+                        })
+                    else:
+                        invalid_locations.append(f"• {loc} (invalid format - use 'City, State' or 5-digit ZIP)")
+
+            # Show error message for invalid locations and stop processing
+            if invalid_locations:
+                error_message = """Invalid location formats detected:
+
+{}
+
+Please use either:
+- City, State (e.g., New York, NY)
+- ZIP code (e.g., 90210)
+
+Please correct all location formats before running the analysis."""
+
+                # Join invalid locations with explicit newlines
+                invalid_list = "\n".join(invalid_locations)
+                
+                st.error(error_message.format(invalid_list))
+                return
 
             # Validate locations with progress bar
             with st.expander("📍 Location Validation Progress", expanded=True):
@@ -487,6 +527,7 @@ def main():
                     return [loc for loc in locations if validate_location(loc)]
                 
                 # Process location validation in parallel
+                skipped_locations = []  # Track skipped locations
                 with ThreadPoolExecutor(max_workers=3) as executor:
                     chunk_size = max(1, len(processed_locations) // 3)
                     location_chunks = [processed_locations[i:i + chunk_size] 
@@ -498,19 +539,45 @@ def main():
                     completed_chunks = 0
                     for future in as_completed(future_to_chunk):
                         chunk_valid_locations = future.result()
+                        
+                        # Check which locations were skipped in this chunk
+                        chunk_index = future_to_chunk[future]
+                        chunk = location_chunks[chunk_index]
+                        for loc in chunk:
+                            if isinstance(loc, str):  # ZIP code
+                                if loc not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
+                                    skipped_locations.append(loc)
+                            else:  # city_state
+                                loc_str = f"{loc['city']}, {loc['state']}"
+                                if loc not in chunk_valid_locations:
+                                    skipped_locations.append(loc_str)
+                        
                         valid_locations.extend(chunk_valid_locations)
                         completed_chunks += 1
                         progress_bar.progress(completed_chunks / len(location_chunks))
                         progress_text.text(f"Validated {completed_chunks}/{len(location_chunks)} location groups...")
+                
+                # Show warning about skipped locations
+                if skipped_locations:
+                    warning_locations = "\n• ".join(skipped_locations)
+                    st.warning(f"""The following locations could not be validated and will be skipped:
+- {warning_locations}
 
-            if not valid_locations:
-                st.error("❌ No valid locations provided. Please check your location format and try again.")
-                return
+Please check for typos or verify these locations exist.""")
+                    
+                # Only continue if we have at least one valid location
+                if not valid_locations:
+                    st.error("No valid locations found. Please check your inputs and try again.")
+                    return
 
-            # Create search queries
+# Create search queries
             search_queries = []
             for location in valid_locations:
-                location_string = f"{location['city']}, {location['state']}"
+                if isinstance(location, str):  # ZIP code
+                    location_string = location
+                else:  # city_state dict
+                    location_string = f"{location['city']}, {location['state']}"
+                
                 for keyword in keyword_list:
                     search_queries.append({
                         'keyword': keyword,
