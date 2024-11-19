@@ -453,8 +453,14 @@ def generate_html_report(results, target_url):
     return html_report
 
 def main():
+    # Get version number from first line comment
+    with open(__file__, 'r') as file:
+        first_line = file.readline().strip()
+        version = first_line.replace('# Version ', '')
+
     # Header with professional styling
     st.title("🎯 SEO Rankings Analyzer Pro")
+    st.markdown(f'<p style="color: gray; font-size: 14px; margin-top: -20px;">v{version}</p>', unsafe_allow_html=True)
     st.markdown("""
         <div class="info-box">
             Analyze a website's search rankings across multiple locations with detailed insights.
