@@ -1,4 +1,4 @@
-# Version 1.2.3
+# Version 1.3.0
 import streamlit as st
 import pandas as pd
 import requests
@@ -190,7 +190,7 @@ def generate_html_report(results, target_url):
                 color: #333;
                 margin: 0 auto;
                 padding: 2rem;
-                max-width: 1200px;    /* Increased from 800px */
+                max-width: 1200px;
                 background-color: #f8fafc;
             }
             .container {
@@ -198,17 +198,6 @@ def generate_html_report(results, target_url):
                 padding: 2rem;
                 border-radius: 8px;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                max-width: 1200px;    /* Increased from 800px */
-            }
-
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                margin: 0 auto;
-                padding: 2rem;
-                max-width: 1000px;    /* Increased from 800px */
-                background-color: #f8fafc;
             }
             .header {
                 text-align: center;
@@ -235,16 +224,6 @@ def generate_html_report(results, target_url):
                 border-radius: 6px;
                 text-align: center;
             }
-            .metric-card h3 {
-                font-size: 14px;
-                color: #64748b;
-                margin: 0 0 8px 0;
-            }
-            .metric-value {
-                font-size: 24px;
-                font-weight: bold;
-                color: #1e3a8a;
-            }
             .section-title {
                 color: #1e3a8a;
                 font-size: 18px;
@@ -252,47 +231,55 @@ def generate_html_report(results, target_url):
                 padding-bottom: 0.5rem;
                 border-bottom: 2px solid #e2e8f0;
             }
-            .keyword-table {            /* New class */
+            .keyword-table {
                 margin-bottom: 2rem;
                 page-break-inside: avoid;
             }
             table {
+                width: 100%;
                 border-collapse: collapse;
                 margin: 1rem 0;
-                font-size: 11px;
+                font-size: 12px;
                 background: white;
             }
             th, td {
                 padding: 8px 12px;
                 border: 1px solid #e2e8f0;
-                min-width: 130px;        /* Added this line */
             }
-            .location-cell {
-                font-weight: 500;
-                min-width: 140px;        /* Added this line */
+            .local-results {
+                margin: 2rem 0;
+                padding: 1rem;
+                background: #f8fafc;
+                border-radius: 8px;
             }
-            .ranking-good {
-                color: #166534;
-                background: #dcfce7;
-                padding: 2px 6px;
+            .local-result {
+                margin: 1rem 0;
+                padding: 1rem;
+                background: white;
+                border-radius: 6px;
+                border: 1px solid #e2e8f0;
+            }
+            .local-title {
+                font-weight: 600;
+                color: #1e3a8a;
+            }
+            .local-rating {
+                display: inline-block;
+                padding: 0.25rem 0.5rem;
+                background: #fff;
                 border-radius: 4px;
-                font-weight: 500;
+                margin: 0.5rem 0;
+                font-size: 0.9em;
             }
-            .ranking-bad {
-                color: #991b1b;
-                background: #fee2e2;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-weight: 500;
-            }
-            .competitors-table {
-                margin-top: 2rem;
-            }
-            .competitor-rank {
+            .local-address {
                 color: #64748b;
-                font-weight: 500;
-                text-align: center;
-                width: 60px;
+                font-size: 0.9em;
+                margin-top: 0.5rem;
+            }
+            .local-hours {
+                color: #64748b;
+                font-size: 0.9em;
+                margin-top: 0.5rem;
             }
         </style>
     </head>
@@ -320,7 +307,7 @@ def generate_html_report(results, target_url):
             </div>
 
             <div class="section-title">Rankings Overview</div>
-            {% for keyword_group in keywords|batch(5) %}      <!-- Changed from single table to grouped tables -->
+            {% for keyword_group in keywords|batch(5) %}
             <div class="keyword-table">
                 <table>
                     <thead>
@@ -334,23 +321,46 @@ def generate_html_report(results, target_url):
                     <tbody>
                         {% for location in locations %}
                         <tr>
-                            <td class="location-cell">{{ location }}</td>
+                            <td>{{ location }}</td>
                             {% for keyword in keyword_group %}
-                            <td style="text-align: center">
+                        <td style="text-align: center">
                                 {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
-                                {% if position == 'n/a' %}
-                                <span style="color: #94a3b8">-</span>
-                                {% elif '#' in position %}
-                                <span class="ranking-good">{{ position }}</span>
-                                {% else %}
-                                <span class="ranking-bad">{{ position }}</span>
-                                {% endif %}
-                            </td>
+                            {% if position == 'n/a' %}
+                            <span style="color: #94a3b8">-</span>
+                            {% elif position == 'Not on Page 1' %}
+                            <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
+                            {% else %}
+                            <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
+                            {% endif %}
+                        </td>
                             {% endfor %}
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+            {% endfor %}
+
+            <div class="section-title">Local Business Results</div>
+            {% for keyword in keywords %}
+            <div class="local-results">
+                <h3>{{ keyword }}</h3>
+                {% for result in local_data.get(keyword, []) %}
+                    <div class="local-result">
+                        <div class="local-title">{{ result.title }}</div>
+                        {% if result.rating %}
+                        <div class="local-rating">
+                            ★ {{ result.rating }} ({{ result.reviews }} reviews)
+                        </div>
+                        {% endif %}
+                        {% if result.address %}
+                        <div class="local-address">📍 {{ result.address }}</div>
+                        {% endif %}
+                        {% if result.hours %}
+                        <div class="local-hours">🕒 {{ result.hours }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
             </div>
             {% endfor %}
 
@@ -405,6 +415,22 @@ def generate_html_report(results, target_url):
                 'location': result['location']
             })
     
+    # Process local business data
+    local_data = {}
+    for result in results:
+        keyword = result['keyword']
+        if keyword not in local_data:
+            local_data[keyword] = []
+            
+        for local_result in result['local_results']:
+            local_data[keyword].append({
+                'title': local_result.get('title', 'N/A'),
+                'rating': local_result.get('rating', None),
+                'reviews': local_result.get('reviews', 0),
+                'address': local_result.get('address', None),
+                'hours': local_result.get('hours', None)
+            })
+    
     template = jinja2.Template(template_string)
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
@@ -420,7 +446,8 @@ def generate_html_report(results, target_url):
         keywords=keywords,
         locations=locations,
         ranking_matrix=ranking_matrix,
-        competitor_data=competitor_data
+        competitor_data=competitor_data,
+        local_data=local_data
     )
     
     return html_report
