@@ -459,10 +459,20 @@ def main():
         version = first_line.replace('# Version ', '')
 
     # Header with professional styling
-    st.title("🎯 SEO Rankings Analyzer Pro")
-    st.markdown(f'<p style="color: gray; font-size: 14px; margin-top: -20px;">v{version}</p>', unsafe_allow_html=True)
+    col1, col2 = st.columns([0.85, 0.15])
+    with col1:
+        st.markdown("""
+            <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                <div style="color: #FF4B4B; font-size: 2.5em; margin-right: 10px;">🎯</div>
+                <div style="color: #262730; font-size: 1.8em; font-weight: 600;">
+                    SEO Rankings Analyzer Pro
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f'<p style="color: #666; font-size: 14px; margin-top: 15px; text-align: right;">v{version}</p>', unsafe_allow_html=True)
     st.markdown("""
-        <div class="info-box">
+        <div style="background-color: #f8f9fa; padding: 1em; border-radius: 0.5em; margin: 1em 0;">
             Analyze a website's search rankings across multiple locations with detailed insights.
         </div>
     """, unsafe_allow_html=True)
