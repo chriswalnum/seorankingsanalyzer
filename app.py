@@ -13,6 +13,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
 
+class ThreadSafeRateLimiter:
+    def __init__(self, calls_per_second=1):
+        self.calls_per_second = calls_per_second
+        self.last_call = time.time()
+        self.lock = threading.Lock()
+
+    def wait(self):
+        with self.lock:
+            now = time.time()
+            time_to_wait = max(0, (1.0 / self.calls_per_second) - (now - self.last_call))
+            if time_to_wait > 0:
+                time.sleep(time_to_wait)
+            self.last_call = time.time()
+
 # Page config
 st.set_page_config(
     page_title="SEO Rankings Analyzer Pro - Test",
@@ -72,6 +86,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Create a global rate limiter instance
+geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=1)
+
 def validate_location(location):
     """Validate if a location exists using GeoPy"""
     # Add debug prefix for easy identification in logs
@@ -96,8 +113,10 @@ def validate_location(location):
         
         # Log before geocoding attempt
         print(f"{debug_prefix} Attempting geocoding...")
+        
+        # Wait for rate limiter before making request
+        geocoding_limiter.wait()
         location_data = geolocator.geocode(search_term)
-        time.sleep(1)  # Respect rate limits
         
         if location_data:
             print(f"{debug_prefix} Success! Found: {location_data.address}")
