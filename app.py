@@ -1,4 +1,4 @@
-# Version 1.3.1
+# Version 1.3.2
 import streamlit as st
 import pandas as pd
 import requests
@@ -74,18 +74,43 @@ st.markdown("""
 
 def validate_location(location):
     """Validate if a location exists using GeoPy"""
+    # Add debug prefix for easy identification in logs
+    debug_prefix = "[Location Validation]"
+    
+    print(f"{debug_prefix} Starting validation for input: {location}")
+    
     geolocator = Nominatim(user_agent="seo_analysis_tool")
     try:
+        # Log input type and value
+        print(f"{debug_prefix} Input type: {type(location)}")
+        
         # Check if input is a ZIP code (5 digits)
         if isinstance(location, str) and location.isdigit() and len(location) == 5:
             search_term = f"{location}, USA"
+            print(f"{debug_prefix} Processing as ZIP code")
         else:  # city_state dict
             search_term = f"{location['city']}, {location['state']}, USA"
+            print(f"{debug_prefix} Processing as City/State pair")
             
+        print(f"{debug_prefix} Search term: {search_term}")
+        
+        # Log before geocoding attempt
+        print(f"{debug_prefix} Attempting geocoding...")
         location_data = geolocator.geocode(search_term)
-        time.sleep(1)
-        return location_data is not None
-    except Exception:
+        time.sleep(1)  # Respect rate limits
+        
+        if location_data:
+            print(f"{debug_prefix} Success! Found: {location_data.address}")
+            return True
+        else:
+            print(f"{debug_prefix} Location not found in database")
+            return False
+            
+    except KeyError as ke:
+        print(f"{debug_prefix} Error: Invalid dictionary format - {ke}")
+        return False
+    except Exception as e:
+        print(f"{debug_prefix} Error: {str(e)}")
         return False
 
 @sleep_and_retry
