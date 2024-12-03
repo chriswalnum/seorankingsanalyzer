@@ -717,14 +717,23 @@ Please check for typos or verify these locations exist.""")
                 values='target_position'
             )
 
-            # Style the dataframe
+            # Style the dataframe with centered alignment
             def style_ranking(val):
                 if '#' in str(val):
-                    return 'background-color: #dcfce7; color: #166534'
-                return 'background-color: #fee2e2; color: #991b1b'
+                    return 'background-color: #dcfce7; color: #166534; text-align: center'
+                return 'background-color: #fee2e2; color: #991b1b; text-align: center'
 
-            styled_pivot = pivot_data.style.applymap(style_ranking)
-            st.dataframe(styled_pivot, height=400)
+            styled_pivot = (pivot_data.style
+                          .applymap(style_ranking)
+                          .set_table_styles([
+                              {'selector': 'th', 'props': [('text-align', 'center')]},
+                              {'selector': '', 'props': [('margin', '0 auto'), ('width', '100%')]}
+                          ]))
+            
+            # Container for full-width centered table
+            st.markdown('<div style="width: 100%; display: flex; justify-content: center;">', unsafe_allow_html=True)
+            st.dataframe(styled_pivot, height=400, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
         # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
