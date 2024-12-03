@@ -699,7 +699,7 @@ Please check for typos or verify these locations exist.""")
                 unsafe_allow_html=True
             )
 
-        # Rankings overview with enhanced styling
+# Rankings overview with enhanced styling
             st.markdown("### 📈 Rankings Overview")
             df_overview = pd.DataFrame(results)
 
@@ -720,7 +720,7 @@ Please check for typos or verify these locations exist.""")
                 return 'background-color: #fee2e2; color: #991b1b'
             
             styled_pivot = pivot_data.style.applymap(style_ranking)
-            st.dataframe(styled_pivot, height=400)
+            st.dataframe(styled_pivot)
 
         # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
