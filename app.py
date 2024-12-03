@@ -708,50 +708,23 @@ Please check for typos or verify these locations exist.""")
                 lambda x: float('inf') if x == 'Not on Page 1' else float(x.replace('#', ''))
             )
             df_overview = df_overview.sort_values('rank_num').groupby(['location', 'keyword']).first().reset_index()
-            
-            # Create location-based grouping
-            locations = df_overview['location'].unique()
-            keywords = df_overview['keyword'].unique()
-            
-            for location in locations:
-                with st.expander(f"📍 {location}", expanded=True):
-                    location_data = df_overview[df_overview['location'] == location]
-                    
-                    # Create columns for keywords
-                    cols = st.columns(len(keywords))
-                    
-                    for idx, keyword in enumerate(keywords):
-                        keyword_data = location_data[location_data['keyword'] == keyword]
-                        if not keyword_data.empty:
-                            position = keyword_data.iloc[0]['target_position']
-                            
-                            # Style based on ranking
-                            if '#' in position:
-                                background_color = '#dcfce7'
-                                text_color = '#166534'
-                            else:
-                                background_color = '#fee2e2'
-                                text_color = '#991b1b'
-                            
-                            cols[idx].markdown(
-                                f"""
-                                <div style="background-color: {background_color}; 
-                                          color: {text_color}; 
-                                          padding: 1rem; 
-                                          border-radius: 8px; 
-                                          text-align: center;
-                                          margin: 0.5rem 0;">
-                                    <div style="font-size: 0.9em; margin-bottom: 0.5rem; 
-                                              color: #4a5568; overflow-wrap: break-word;">
-                                        {keyword}
-                                    </div>
-                                    <div style="font-size: 1.2em; font-weight: bold;">
-                                        {position}
-                                    </div>
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
+            df_overview = df_overview.drop('rank_num', axis=1)
+
+            # Create pivot table
+            pivot_data = df_overview.pivot(
+                index='location',
+                columns='keyword',
+                values='target_position'
+            )
+
+            # Style the dataframe
+            def style_ranking(val):
+                if '#' in str(val):
+                    return 'background-color: #dcfce7; color: #166534'
+                return 'background-color: #fee2e2; color: #991b1b'
+
+            styled_pivot = pivot_data.style.applymap(style_ranking)
+            st.dataframe(styled_pivot, height=400)
 
         # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
