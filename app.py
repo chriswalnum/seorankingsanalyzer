@@ -699,26 +699,25 @@ Please check for typos or verify these locations exist.""")
                 unsafe_allow_html=True
             )
 
-st.markdown("### 📈 Rankings Overview")
-            df_overview = pd.DataFrame(results)
-            df_overview = df_overview.drop_duplicates(subset=['location', 'keyword'], keep='first')
-            
-            pivot_data = df_overview.pivot(
-                index='location',
-                columns='keyword',
-                values='target_position'
-            )
-            
-            def style_ranking(val):
-                if '#' in str(val):
-                    return 'background-color: #dcfce7; color: #166534'
-                return 'background-color: #fee2e2; color: #991b1b'
-            
-            styled_pivot = pivot_data.style.applymap(style_ranking)
-            
-            st.markdown('<div class="results-table">', unsafe_allow_html=True)
-            st.dataframe(styled_pivot, height=400)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Rankings overview with enhanced styling
+        st.markdown("### 📈 Rankings Overview")
+        df_overview = pd.DataFrame(results)
+        
+        # Create pivot table
+        pivot_data = df_overview.pivot(
+            index='location',
+            columns='keyword',
+            values='target_position'
+        )
+        
+        # Style the dataframe
+        def style_ranking(val):
+            if '#' in str(val):
+                return 'background-color: #dcfce7; color: #166534'
+            return 'background-color: #fee2e2; color: #991b1b'
+        
+        styled_pivot = pivot_data.style.applymap(style_ranking)
+        st.dataframe(styled_pivot, height=400)
 
         # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
@@ -782,3 +781,4 @@ st.markdown("### 📈 Rankings Overview")
 
 if __name__ == "__main__":
     main()
+    
