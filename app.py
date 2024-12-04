@@ -769,17 +769,5 @@ Please check for typos or verify these locations exist.""")
                 mime="text/csv"
             )
         
-        with col3:
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                df_overview.to_excel(writer, sheet_name='Rankings', index=False)
-            excel_data = excel_buffer.getvalue()
-            st.download_button(
-                label="📘 Download Excel",
-                data=excel_data,
-                file_name=f"{base_filename}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
 if __name__ == "__main__":
     main()
