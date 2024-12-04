@@ -1,4 +1,4 @@
-# Version 1.3.3
+# Version 1.3.4
 import streamlit as st
 import pandas as pd
 import requests
@@ -385,13 +385,14 @@ def generate_html_report(results, target_url):
             <table class="competitors-table">
                 <thead>
                     <tr>
-                        <th colspan="4">{{ keyword }}</th>
+                        <th colspan="5">{{ keyword }}</th>
                     </tr>
                     <tr>
                         <th style="width: 80px">Rank</th>
                         <th>Business Name</th>
                         <th style="width: 100px">Rating</th>
                         <th style="width: 100px">Reviews</th>
+                        <th style="width: 120px">Location</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -401,6 +402,7 @@ def generate_html_report(results, target_url):
                         <td>{{ result.title }}</td>
                         <td style="text-align: center">{% if result.rating %}★ {{ "%.1f"|format(result.rating|float) }}{% endif %}</td>
                         <td style="text-align: center">{{ result.reviews }}</td>
+                        <td class="location-cell">{{ result.location }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -437,6 +439,7 @@ def generate_html_report(results, target_url):
     local_data = {}
     for result in results:
         keyword = result['keyword']
+        location = result['location']
         if keyword not in local_data:
             local_data[keyword] = []
             
@@ -444,7 +447,8 @@ def generate_html_report(results, target_url):
             local_data[keyword].append({
                 'title': local_result.get('title', 'N/A'),
                 'rating': local_result.get('rating', None),
-                'reviews': local_result.get('reviews', 0)
+                'reviews': local_result.get('reviews', 0),
+                'location': location
             })
     
     template = jinja2.Template(template_string)
