@@ -699,32 +699,27 @@ Please check for typos or verify these locations exist.""")
                 unsafe_allow_html=True
             )
 
-# Rankings overview with enhanced styling
-            st.markdown("### 📈 Rankings Overview")
-            df_overview = pd.DataFrame(results)
-
-            # Handle duplicates by keeping the best ranking for each location-keyword pair
-            df_overview['rank_num'] = df_overview['target_position'].apply(
-                lambda x: float('inf') if x == 'Not on Page 1' else float(x.replace('#', ''))
-            )
-            df_overview = df_overview.sort_values('rank_num').groupby(['location', 'keyword']).first().reset_index()
-            df_overview = df_overview.drop('rank_num', axis=1)
-
-            # Create pivot table
-            pivot_data = df_overview.pivot(
-                index='location',
-                columns='keyword',
-                values='target_position'
-            )
-
-            # Style the dataframe
-            def style_ranking(val):
-                if '#' in str(val):
-                    return 'background-color: #dcfce7; color: #166534'
-                return 'background-color: #fee2e2; color: #991b1b'
-
-            styled_pivot = pivot_data.style.applymap(style_ranking)
-            st.dataframe(styled_pivot, height=400)
+        # Rankings overview with enhanced styling
+        st.markdown("### 📈 Rankings Overview")
+        df_overview = pd.DataFrame(results)
+        
+        # Create pivot table with aggregation that takes minimum rank
+        pivot_data = pd.pivot_table(
+            df_overview,
+            index='location',
+            columns='keyword',
+            values='target_position',
+            aggfunc=lambda x: max(x, key=lambda y: float('inf') if y == 'Not on Page 1' else float(y.replace('#', '')))
+        )
+        
+        # Style the dataframe
+        def style_ranking(val):
+            if '#' in str(val):
+                return 'background-color: #dcfce7; color: #166534'
+            return 'background-color: #fee2e2; color: #991b1b'
+        
+        styled_pivot = pivot_data.style.applymap(style_ranking)
+        st.dataframe(styled_pivot, height=400)
 
         # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
@@ -788,4 +783,3 @@ Please check for typos or verify these locations exist.""")
 
 if __name__ == "__main__":
     main()
-    
