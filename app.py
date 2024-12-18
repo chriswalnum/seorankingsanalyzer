@@ -1,4 +1,4 @@
-# Version 1.3.4
+# Version 1.3.5
 import streamlit as st
 import pandas as pd
 import requests
@@ -319,6 +319,22 @@ def generate_html_report(results, target_url):
                     <div class="metric-value">{{ ranking_rate }}%</div>
                 </div>
             </div>
+        <div class="section-title">Local Rankings Overview</div>
+        <div class="metrics">
+            <div class="metric-card">
+                <h3>Total Local Listings</h3>
+                <div class="metric-value">{{ total_local_listings }}</div>
+            </div>
+            <div class="metric-card">
+                <h3>In Top 3 Listings</h3>
+                <div class="metric-value">{{ in_top_3_local }}</div>
+            </div>
+            <div class="metric-card">
+                <h3>Top 3 Rate</h3>
+                <div class="metric-value">{{ local_rate }}%</div>
+            </div>
+        </div>
+            
 
             <div class="section-title">Rankings Overview</div>
             {% for keyword_group in keywords|batch(5) %}
@@ -455,6 +471,19 @@ def generate_html_report(results, target_url):
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
     ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
+    total_local_listings = len([r for r in results if r['local_results']])
+    in_top_3_local = len([r for r in results if any(
+        business.get('title', '').lower() == target_url.lower() 
+        for business in r.get('local_results', [])[:3]
+    )])
+    local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
+
+    total_local_listings = sum(1 for r in results if r['local_results'])
+    in_top_3_local = sum(1 for r in results if any(
+    business.get('title', '').lower() == target_url.lower() 
+    for business in r['local_results'][:3]
+    ))
+    local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
     
     html_report = template.render(
         timestamp=datetime.now(pytz.timezone('America/New_York')).strftime("%Y-%m-%d %I:%M:%S %p EST"),
@@ -467,7 +496,10 @@ def generate_html_report(results, target_url):
         locations=locations,
         ranking_matrix=ranking_matrix,
         competitor_data=competitor_data,
-        local_data=local_data
+        local_data=local_data,
+        total_local_listings=total_local_listings,
+        in_top_3_local=in_top_3_local,
+        local_rate=local_rate
     )
     
     return html_report
@@ -672,6 +704,14 @@ Please check for typos or verify these locations exist.""")
         total_queries = len(results)
         ranked_queries = len([r for r in results if '#' in r['target_position']])
         
+        # Local metrics calculation
+        total_local_listings = len([r for r in results if r['local_results']])
+        in_top_3_local = len([r for r in results if any(
+            business.get('title', '').lower() == target_url.lower() 
+            for business in r.get('local_results', [])[:3]
+        )])
+        local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
+
         with col1:
             st.markdown(
                 f"""<div class="metric-card">
@@ -698,6 +738,40 @@ Please check for typos or verify these locations exist.""")
                     <h4>Ranking Rate</h4>
                     <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
                         {(ranked_queries/total_queries*100):.1f}%
+                    </div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+        
+        st.markdown("### 📍 Local Rankings Summary")
+        col4, col5, col6 = st.columns(3)
+
+        with col4:
+            st.markdown(
+                f"""<div class="metric-card">
+                    <h4>Total Local Listings</h4>
+                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                        {total_local_listings}
+                    </div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+        with col5:
+            st.markdown(
+                f"""<div class="metric-card">
+                    <h4>In Top 3 Listings</h4>
+                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                        {in_top_3_local}
+                    </div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+        with col6:
+            st.markdown(
+                f"""<div class="metric-card">
+                    <h4>Top 3 Rate</h4>
+                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                        {local_rate}%
                     </div>
                 </div>""",
                 unsafe_allow_html=True
