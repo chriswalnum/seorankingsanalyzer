@@ -1,4 +1,4 @@
-# Version 1.4.0
+# Version 1.3.5
 import streamlit as st
 import pandas as pd
 import requests
@@ -12,7 +12,6 @@ import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
-from xhtml2pdf import pisa
 
 class ThreadSafeRateLimiter:
     def __init__(self, calls_per_second=1):
@@ -846,17 +845,6 @@ Please check for typos or verify these locations exist.""")
                 data=csv,
                 file_name=f"{base_filename}.csv",
                 mime="text/csv"
-            )
-        with col3:
-            pdf_bytes = io.BytesIO()
-            pisa.CreatePDF(html_report, dest=pdf_bytes)
-            pdf_bytes.seek(0)
-            
-            st.download_button(
-                label="📑 Download PDF Report",
-                data=pdf_bytes,
-                file_name=f"{base_filename}.pdf",
-                mime="application/pdf"
             )
         
 if __name__ == "__main__":
