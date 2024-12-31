@@ -1,4 +1,4 @@
-# Version 1.3.5
+# Version 1.4.0
 import streamlit as st
 import pandas as pd
 import requests
@@ -12,6 +12,7 @@ import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
+from xhtml2pdf import pisa
 
 class ThreadSafeRateLimiter:
     def __init__(self, calls_per_second=1):
@@ -219,107 +220,110 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     return results
 
 def generate_html_report(results, target_url):
-    """Generate a professional HTML report using Jinja2"""
     template_string = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>SEO Analysis Report</title>
         <style>
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                margin: 0 auto;
-                padding: 2rem;
-                max-width: 1200px;
-                background-color: #f8fafc;
+            @page {
+                margin: 2.5cm;
             }
-            .container {
-                background: white;
-                padding: 2rem;
-                border-radius: 8px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #1a1a1a;
+                margin: 0;
+                padding: 0;
             }
             .header {
                 text-align: center;
-                margin-bottom: 2rem;
+                margin-bottom: 3rem;
+                border-bottom: 2px solid #2563eb;
+                padding-bottom: 1rem;
             }
             .header h1 {
-                color: #1e3a8a;
-                font-size: 24px;
-                margin-bottom: 8px;
-            }
-            .header p {
-                color: #64748b;
-                margin: 4px 0;
+                color: #2563eb;
+                font-size: 28px;
+                margin-bottom: 0.5rem;
             }
             .metrics {
                 display: grid;
                 grid-template-columns: repeat(3, 1fr);
-                gap: 1rem;
-                margin-bottom: 2rem;
+                gap: 1.5rem;
+                margin: 2rem 0;
             }
             .metric-card {
                 background: #f8fafc;
-                padding: 1rem;
-                border-radius: 6px;
+                padding: 1.5rem;
+                border-radius: 8px;
+                border: 1px solid #e2e8f0;
                 text-align: center;
             }
             .section-title {
-                color: #1e3a8a;
-                font-size: 28px;
-                margin: 2rem 0 1rem 0;
-                padding-bottom: 0.5rem;
+                color: #2563eb;
+                font-size: 24px;
+                margin: 2.5rem 0 1.5rem;
                 border-bottom: 2px solid #e2e8f0;
-            }
-            .keyword-table {
-                margin-bottom: 2rem;
-                page-break-inside: avoid;
+                padding-bottom: 0.5rem;
             }
             table {
                 width: 100%;
                 border-collapse: collapse;
-                margin: 1rem 0;
-                font-size: 16px;
-                background: white;
+                margin: 1.5rem 0;
+            }
+            th {
+                background: #f1f5f9;
+                color: #1e40af;
+                font-weight: 600;
+                text-align: left;
             }
             th, td {
-                padding: 8px 12px;
+                padding: 12px;
                 border: 1px solid #e2e8f0;
             }
-            .competitor-rank {
-                text-align: center;
-                color: #64748b;
+            .status-badge {
+                display: inline-block;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 14px;
                 font-weight: 500;
+            }
+            .status-success {
+                background: #dcfce7;
+                color: #166534;
+            }
+            .status-failure {
+                background: #fee2e2;
+                color: #991b1b;
             }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>SEO Rankings Analysis Report</h1>
-                <p>{{ target_url }}</p>
-                <p>Generated on {{ timestamp }}</p>
-            </div>
+        <div class="header">
+            <h1>SEO Rankings Analysis Report</h1>
+            <p>{{ target_url }}</p>
+            <p>Generated on {{ timestamp }}</p>
+        </div>
 
-            <div class="metrics">
-                <div class="metric-card">
-                    <h3>Total Queries</h3>
-                    <div class="metric-value">{{ total_queries }}</div>
-                </div>
-                <div class="metric-card">
-                    <h3>First Page Rankings</h3>
-                    <div class="metric-value">{{ ranked_queries }}</div>
-                </div>
-                <div class="metric-card">
-                    <h3>Ranking Rate</h3>
-                    <div class="metric-value">{{ ranking_rate }}%</div>
-                </div>
+        <div class="section-title">Organic Search Rankings Summary</div>
+        <div class="metrics">
+            <div class="metric-card">
+                <h3>Total Queries</h3>
+                <div class="metric-value">{{ total_queries }}</div>
             </div>
-        <div class="section-title">Local Rankings Overview</div>
+            <div class="metric-card">
+                <h3>First Page Rankings</h3>
+                <div class="metric-value">{{ ranked_queries }}</div>
+            </div>
+            <div class="metric-card">
+                <h3>Ranking Rate</h3>
+                <div class="metric-value">{{ ranking_rate }}%</div>
+            </div>
+        </div>
+
+        <div class="section-title">Local Map Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
                 <h3>Total Local Listings</h3>
@@ -333,8 +337,7 @@ def generate_html_report(results, target_url):
                 <h3>Top 3 Rate</h3>
                 <div class="metric-value">{{ local_rate }}%</div>
             </div>
-        </div>
-            
+        </div>            
 
             <div class="section-title">Rankings Overview</div>
             {% for keyword_group in keywords|batch(5) %}
@@ -845,6 +848,17 @@ Please check for typos or verify these locations exist.""")
                 data=csv,
                 file_name=f"{base_filename}.csv",
                 mime="text/csv"
+            )
+        with col3:
+            pdf_bytes = io.BytesIO()
+            pisa.CreatePDF(html_report, dest=pdf_bytes)
+            pdf_bytes.seek(0)
+            
+            st.download_button(
+                label="📑 Download PDF Report",
+                data=pdf_bytes,
+                file_name=f"{base_filename}.pdf",
+                mime="application/pdf"
             )
         
 if __name__ == "__main__":
