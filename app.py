@@ -1,4 +1,4 @@
-# Version 1.4.0
+# Version 1.6.0
 import streamlit as st
 import pandas as pd
 import requests
@@ -13,7 +13,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ratelimit import limits, sleep_and_retry
 import threading
 from xhtml2pdf import pisa
+import os
 
+# --------------------------------------------------------------------------
+# Thread-safe Rate Limiter (from 1.4)
+# --------------------------------------------------------------------------
 class ThreadSafeRateLimiter:
     def __init__(self, calls_per_second=1):
         self.calls_per_second = calls_per_second
@@ -28,104 +32,41 @@ class ThreadSafeRateLimiter:
                 time.sleep(time_to_wait)
             self.last_call = time.time()
 
-# Page config
-st.set_page_config(
-    page_title="SEO Rankings Analyzer Pro - Test",
-    page_icon="📊",
-    layout="wide"
-)
-
-# Initialize session state
-if 'analysis_complete' not in st.session_state:
-    st.session_state.analysis_complete = False
-    st.session_state.start_time = None
-
-# Enhanced Custom CSS
-st.markdown("""
-    <style>
-        .stApp {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .metric-card {
-            background-color: #f8fafc;
-            padding: 1.5rem;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin: 1rem 0;
-        }
-        .results-table {
-            font-size: 14px;
-        }
-        .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-        .status-success {
-            background-color: #dcfce7;
-            color: #166534;
-        }
-        .status-failure {
-            background-color: #fee2e2;
-            color: #991b1b;
-        }
-        .stButton>button {
-            width: 100%;
-        }
-        .info-box {
-            padding: 1rem;
-            background-color: #f1f5f9;
-            border-radius: 6px;
-            margin: 1rem 0;
-        }
-        .stProgress > div > div > div {
-            background-color: #3b82f6;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Create a global rate limiter instance
+# Create a global rate limiter instance for geocoding
 geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=1)
 
+# --------------------------------------------------------------------------
+# Location Validation (restored debug-logging version from 1.4)
+# --------------------------------------------------------------------------
 def validate_location(location):
-    """Validate if a location exists using GeoPy"""
-    # Add debug prefix for easy identification in logs
+    """Validate if a location exists using GeoPy with debug logs."""
     debug_prefix = "[Location Validation]"
-    
     print(f"{debug_prefix} Starting validation for input: {location}")
-    
+
     geolocator = Nominatim(user_agent="seo_analysis_tool")
     try:
-        # Log input type and value
         print(f"{debug_prefix} Input type: {type(location)}")
-        
-        # Check if input is a ZIP code (5 digits)
+
         if isinstance(location, str) and location.isdigit() and len(location) == 5:
+            # ZIP code
             search_term = f"{location}, USA"
-            print(f"{debug_prefix} Processing as ZIP code")
-        else:  # city_state dict
+            print(f"{debug_prefix} Processing as ZIP code -> {search_term}")
+        else:
+            # city_state dict
             search_term = f"{location['city']}, {location['state']}, USA"
-            print(f"{debug_prefix} Processing as City/State pair")
-            
-        print(f"{debug_prefix} Search term: {search_term}")
-        
-        # Log before geocoding attempt
+            print(f"{debug_prefix} Processing as City/State -> {search_term}")
+
         print(f"{debug_prefix} Attempting geocoding...")
-        
-        # Wait for rate limiter before making request
         geocoding_limiter.wait()
         location_data = geolocator.geocode(search_term)
-        
+
         if location_data:
             print(f"{debug_prefix} Success! Found: {location_data.address}")
             return True
         else:
-            print(f"{debug_prefix} Location not found in database")
+            print(f"{debug_prefix} Location not found in database.")
             return False
-            
+
     except KeyError as ke:
         print(f"{debug_prefix} Error: Invalid dictionary format - {ke}")
         return False
@@ -133,19 +74,22 @@ def validate_location(location):
         print(f"{debug_prefix} Error: {str(e)}")
         return False
 
+# --------------------------------------------------------------------------
+# SERP Data Fetching and Rate Limiting (merged from 1.4 & 1.5.5)
+# --------------------------------------------------------------------------
 @sleep_and_retry
 @limits(calls=5, period=1)
 def rate_limited_api_call(base_url, params):
-    """Make a rate-limited API call"""
+    """Make a rate-limited API call."""
     response = requests.get(base_url, params=params)
     response.raise_for_status()
     return response.json()
 
-def fetch_serp_data(query):
-    """Fetch SERP data from ValueSERP API with rate limiting"""
+def fetch_serp_data(query, api_key):
+    """Fetch SERP data from ValueSERP API with rate limiting."""
     base_url = "https://api.valueserp.com/search"
     params = {
-        'api_key': st.secrets["VALUESERP_API_KEY"],
+        'api_key': api_key,
         'q': query['query'],
         'location': query['location'],
         'google_domain': 'google.com',
@@ -154,27 +98,27 @@ def fetch_serp_data(query):
         'num': 10,
         'output': 'json'
     }
-    
     try:
         return rate_limited_api_call(base_url, params)
     except requests.exceptions.RequestException:
         return None
 
-def process_query(query, target_url):
-    """Process a single SERP query and return results"""
-    serp_data = fetch_serp_data(query)
+def process_query(query, target_url, api_key):
+    """Process a single SERP query and return results."""
+    serp_data = fetch_serp_data(query, api_key)
     if not serp_data:
         return None
-        
+
     organic_results = serp_data.get('organic_results', [])
     local_results = serp_data.get('local_results', [])
-    
+
     position = "Not on Page 1"
     for idx, result in enumerate(organic_results, 1):
+        # Compare domain to target_url
         if target_url in result.get('domain', '').lower():
             position = f"#{idx}"
             break
-    
+
     return {
         'keyword': query['keyword'],
         'location': query['location'],
@@ -183,30 +127,29 @@ def process_query(query, target_url):
         'local_results': local_results[:3]
     }
 
-def parallel_process_queries(search_queries, target_url, progress_text, progress_bar):
-    """Process queries in parallel with progress tracking"""
+# --------------------------------------------------------------------------
+# Parallel Processing of Queries (from 1.4, with minor merge for api_key)
+# --------------------------------------------------------------------------
+def parallel_process_queries(search_queries, target_url, progress_text, progress_bar, api_key):
+    """Process queries in parallel with progress tracking."""
     results = []
     completed = 0
     total = len(search_queries)
-    
-    # Create a thread-safe lock for updating progress
-    progress_lock = threading.Lock()
-    
+    lock = threading.Lock()
+
     def update_progress():
         nonlocal completed
-        with progress_lock:
+        with lock:
             completed += 1
-            progress = completed / total
-            progress_bar.progress(progress)
+            progress_bar.progress(completed / total)
             progress_text.text(f"Processed {completed}/{total} queries...")
-    
+
     # Use ThreadPoolExecutor for parallel processing
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_query = {
-            executor.submit(process_query, query, target_url): query 
+            executor.submit(process_query, query, target_url, api_key): query
             for query in search_queries
         }
-        
         for future in as_completed(future_to_query):
             query = future_to_query[future]
             try:
@@ -214,307 +157,413 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
                 if result:
                     results.append(result)
             except Exception as e:
-                st.warning(f"Error processing query '{query['keyword']}' in {query['location']}: {str(e)}")
+                st.warning(
+                    f"Error processing query '{query['keyword']}' in {query['location']}: {str(e)}"
+                )
             update_progress()
-    
+
     return results
 
-def generate_html_report(results, target_url):
-    template_string = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>SEO Analysis Report</title>
-        <style>
-            @page {
-                margin: 2.5cm;
-            }
-            body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                color: #1a1a1a;
-                margin: 0;
-                padding: 0;
-            }
-            .header {
-                text-align: center;
-                margin-bottom: 3rem;
-                border-bottom: 2px solid #2563eb;
-                padding-bottom: 1rem;
-            }
-            .header h1 {
-                color: #2563eb;
-                font-size: 28px;
-                margin-bottom: 0.5rem;
-            }
-            .metrics {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 1.5rem;
-                margin: 2rem 0;
-            }
-            .metric-card {
-                background: #f8fafc;
-                padding: 1.5rem;
-                border-radius: 8px;
-                border: 1px solid #e2e8f0;
-                text-align: center;
-            }
-            .section-title {
-                color: #2563eb;
-                font-size: 24px;
-                margin: 2.5rem 0 1.5rem;
-                border-bottom: 2px solid #e2e8f0;
-                padding-bottom: 0.5rem;
-            }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1.5rem 0;
-            }
-            th {
-                background: #f1f5f9;
-                color: #1e40af;
-                font-weight: 600;
-                text-align: left;
-            }
-            th, td {
-                padding: 12px;
-                border: 1px solid #e2e8f0;
-            }
-            .status-badge {
-                display: inline-block;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            .status-success {
-                background: #dcfce7;
-                color: #166534;
-            }
-            .status-failure {
-                background: #fee2e2;
-                color: #991b1b;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>SEO Rankings Analysis Report</h1>
-            <p>{{ target_url }}</p>
-            <p>Generated on {{ timestamp }}</p>
-        </div>
-
-        <div class="section-title">Organic Search Rankings Summary</div>
-        <div class="metrics">
-            <div class="metric-card">
-                <h3>Total Queries</h3>
-                <div class="metric-value">{{ total_queries }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>First Page Rankings</h3>
-                <div class="metric-value">{{ ranked_queries }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>Ranking Rate</h3>
-                <div class="metric-value">{{ ranking_rate }}%</div>
-            </div>
-        </div>
-
-        <div class="section-title">Local Map Rankings Summary</div>
-        <div class="metrics">
-            <div class="metric-card">
-                <h3>Total Local Listings</h3>
-                <div class="metric-value">{{ total_local_listings }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>In Top 3 Listings</h3>
-                <div class="metric-value">{{ in_top_3_local }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>Top 3 Rate</h3>
-                <div class="metric-value">{{ local_rate }}%</div>
-            </div>
-        </div>            
-
-            <div class="section-title">Rankings Overview</div>
-            {% for keyword_group in keywords|batch(5) %}
-            <div class="keyword-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Location</th>
-                            {% for keyword in keyword_group %}
-                            <th>{{ keyword }}</th>
-                            {% endfor %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for location in locations %}
-                        <tr>
-                            <td>{{ location }}</td>
-                            {% for keyword in keyword_group %}
-                            <td style="text-align: center">
-                                {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
-                                {% if position == 'n/a' %}
-                                <span style="color: #94a3b8">-</span>
-                                {% elif position == 'Not on Page 1' %}
-                                <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
-                                {% else %}
-                                <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
-                                {% endif %}
-                            </td>
-                            {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endfor %}
-
-            <div class="section-title">Top Competitors by Keyword</div>
-            {% for keyword in keywords %}
-            <table class="competitors-table">
-                <thead>
-                    <tr>
-                        <th colspan="3">{{ keyword }}</th>
-                    </tr>
-                    <tr>
-                        <th style="width: 80px">Rank</th>
-                        <th>Domain</th>
-                        <th style="width: 120px">Location</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for result in competitor_data.get(keyword, []) %}
-                    <tr>
-                        <td class="competitor-rank">#{{ result.rank }}</td>
-                        <td>{{ result.domain }}</td>
-                        <td>{{ result.location }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% endfor %}
-
-            <div class="section-title">Local Business Results</div>
-            {% for keyword in keywords %}
-            <table class="competitors-table">
-                <thead>
-                    <tr>
-                        <th colspan="5">{{ keyword }}</th>
-                    </tr>
-                    <tr>
-                        <th style="width: 80px">Rank</th>
-                        <th>Business Name</th>
-                        <th style="width: 100px">Rating</th>
-                        <th style="width: 100px">Reviews</th>
-                        <th style="width: 120px">Location</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for result in local_data.get(keyword, []) %}
-                    <tr>
-                        <td class="competitor-rank">#{{ loop.index }}</td>
-                        <td>{{ result.title }}</td>
-                        <td style="text-align: center">{% if result.rating %}★ {{ "%.1f"|format(result.rating|float) }}{% endif %}</td>
-                        <td style="text-align: center">{{ result.reviews }}</td>
-                        <td class="location-cell">{{ result.location }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% endfor %}
-        </div>
-    </body>
-    </html>
+# --------------------------------------------------------------------------
+# Generate PDF/HTML Report (from 1.5.5, preserving cover page & styling)
+# --------------------------------------------------------------------------
+def generate_html_report(results, target_url, client_logo_base64=None):
     """
-    
-    # Process data for template
+    Generates a PDF/HTML report WITHOUT "By Chris Walnum" text
+    and WITHOUT a <pdf:toc> element, so no table of contents page
+    appears at the end. (From 1.5.5)
+    """
+
+    template_string = r"""
+<!DOCTYPE html>
+<html xmlns:pdf="http://ns.adobe.com/xdp/pdf/">
+<head>
+    <meta charset="UTF-8"/>
+    <title>SEO Analysis Report</title>
+    <style>
+        @page {
+            margin: 2cm;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            color: #1a1a1a;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Cover Page */
+        .cover-page {
+            text-align: center;
+            margin-top: 20px;
+            page-break-after: always;
+        }
+        .cover-logo {
+            margin-bottom: 8px;
+        }
+        .cover-title {
+            font-size: 26px;
+            color: #2563eb;
+            margin: 6px 0;
+        }
+        /* We do NOT include "By Chris Walnum" here. */
+        .domain-line,
+        .timestamp-line {
+            color: #333;
+            font-size: 12px;
+            margin: 0;
+        }
+
+        .summaries-row {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 60px;
+            margin-top: 15px;
+        }
+        .summary-block {
+            width: 270px;
+        }
+        .summary-title {
+            font-size: 16px;
+            color: #2563eb;
+            margin-bottom: 8px;
+        }
+        .metrics-grid {
+            display: flex;
+            gap: 8px;
+        }
+        .metric-card {
+            flex: 1;
+            background: #f8fafc;
+            padding: 8px 6px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .metric-title {
+            margin: 0 0 4px;
+            font-size: 12px;
+            color: #1e40af;
+        }
+        .metric-value {
+            font-size: 16px;
+            color: #3b82f6;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        /* Corner logo on subsequent pages */
+        .corner-logo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 100px;
+        }
+
+        /* Other sections & tables */
+        .section-title {
+            font-size: 18px;
+            color: #2563eb;
+            margin: 30px 0 10px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+            font-size: 12px;
+        }
+        th {
+            background: #f1f5f9;
+            color: #1e40af;
+            font-weight: 600;
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        td {
+            padding: 6px 8px;
+            border: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .status-failure {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+<!-- Cover Page -->
+<div class="cover-page">
+    {% if client_logo_base64 %}
+    <div class="cover-logo">
+        <img src="data:image/png;base64,{{ client_logo_base64 }}" style="max-width:200px; height:auto;" />
+    </div>
+    {% endif %}
+    <h1 class="cover-title">SEO Rankings Analysis Report</h1>
+    <p class="domain-line">{{ target_url }}</p>
+    <p class="timestamp-line">Generated on {{ timestamp }}</p>
+
+    <div class="summaries-row">
+        <!-- Organic Summary -->
+        <div class="summary-block">
+            <div class="summary-title">Organic Search Rankings Summary</div>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <p class="metric-title">Total Queries</p>
+                    <p class="metric-value">{{ total_queries }}</p>
+                </div>
+                <div class="metric-card">
+                    <p class="metric-title">First Page</p>
+                    <p class="metric-value">{{ ranked_queries }}</p>
+                </div>
+                <div class="metric-card">
+                    <p class="metric-title">Rate</p>
+                    <p class="metric-value">{{ ranking_rate }}%</p>
+                </div>
+            </div>
+        </div>
+        <!-- Local Summary -->
+        <div class="summary-block">
+            <div class="summary-title">Local Map Rankings Summary</div>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <p class="metric-title">Total Local</p>
+                    <p class="metric-value">{{ total_local_listings }}</p>
+                </div>
+                <div class="metric-card">
+                    <p class="metric-title">Top 3</p>
+                    <p class="metric-value">{{ in_top_3_local }}</p>
+                </div>
+                <div class="metric-card">
+                    <p class="metric-title">Rate</p>
+                    <p class="metric-value">{{ local_rate }}%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if client_logo_base64 %}
+<img src="data:image/png;base64,{{ client_logo_base64 }}" class="corner-logo" />
+{% endif %}
+
+<!-- No <pdf:toc> tag here, so no automatic table of contents -->
+<!-- Additional sections follow -->
+
+<h2 class="section-title">Rankings Overview</h2>
+{% for keyword_group in keywords|batch(5) %}
+<table>
+    <thead>
+        <tr>
+            <th>Location</th>
+            {% for keyword in keyword_group %}
+                <th>{{ keyword }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for location in locations %}
+        <tr>
+            <td>{{ location }}</td>
+            {% for keyword in keyword_group %}
+            <td style="text-align: center;">
+                {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
+                {% if position == 'n/a' %}
+                    <span style="color: #94a3b8">-</span>
+                {% elif position == 'Not on Page 1' %}
+                    <span class="status-badge status-failure">{{ position }}</span>
+                {% else %}
+                    <span class="status-badge status-success">{{ position }}</span>
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endfor %}
+
+<h2 class="section-title">Top Competitors by Keyword</h2>
+{% for keyword in keywords %}
+<table>
+    <thead>
+        <tr>
+            <th colspan="3">{{ keyword }}</th>
+        </tr>
+        <tr>
+            <th style="width: 80px;">Rank</th>
+            <th>Domain</th>
+            <th style="width: 120px;">Location</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for result in competitor_data.get(keyword, []) %}
+        <tr>
+            <td>#{{ result.rank }}</td>
+            <td>{{ result.domain }}</td>
+            <td>{{ result.location }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endfor %}
+
+<h2 class="section-title">Local Business Results</h2>
+{% for keyword in keywords %}
+<table>
+    <thead>
+        <tr>
+            <th colspan="5">{{ keyword }}</th>
+        </tr>
+        <tr>
+            <th style="width: 80px;">Rank</th>
+            <th>Business Name</th>
+            <th style="width: 100px;">Rating</th>
+            <th style="width: 100px;">Reviews</th>
+            <th style="width: 120px;">Location</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for result in local_data.get(keyword, []) %}
+        <tr>
+            <td>#{{ loop.index }}</td>
+            <td>{{ result.title }}</td>
+            <td>
+                {% if result.rating %}
+                    ★ {{ "%.1f"|format(result.rating|float) }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>{{ result.reviews }}</td>
+            <td>{{ result.location }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endfor %}
+</body>
+</html>
+    """
+
+    # Prepare data
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
-    
-    # Create ranking matrix
+
+    # Ranking matrix
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
-    
-    # Process competitor data
+
+    # Competitor data
     competitor_data = {}
     for result in results:
         keyword = result['keyword']
         if keyword not in competitor_data:
             competitor_data[keyword] = []
-            
-        competitors = result['organic_results'][:3]
-        for rank, comp in enumerate(competitors, 1):
+        for rank, comp in enumerate(result['organic_results'], 1):
             competitor_data[keyword].append({
                 'rank': rank,
                 'domain': comp.get('domain', 'N/A'),
                 'location': result['location']
             })
-    
-    # Process local business data
+
+    # Local business data
     local_data = {}
     for result in results:
         keyword = result['keyword']
-        location = result['location']
         if keyword not in local_data:
             local_data[keyword] = []
-            
         for local_result in result['local_results']:
             local_data[keyword].append({
                 'title': local_result.get('title', 'N/A'),
                 'rating': local_result.get('rating', None),
                 'reviews': local_result.get('reviews', 0),
-                'location': location
+                'location': result['location']
             })
-    
-    template = jinja2.Template(template_string)
+
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
-    ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
-    total_local_listings = len([r for r in results if r['local_results']])
-    in_top_3_local = len([r for r in results if any(
-        business.get('title', '').lower() == target_url.lower() 
-        for business in r.get('local_results', [])[:3]
-    )])
-    local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
-
     total_local_listings = sum(1 for r in results if r['local_results'])
-    in_top_3_local = sum(1 for r in results if any(
-    business.get('title', '').lower() == target_url.lower() 
-    for business in r['local_results'][:3]
-    ))
-    local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
-    
+    in_top_3_local = sum(
+        1 for r in results if any(
+            biz.get('title', '').lower() == target_url.lower()
+            for biz in r['local_results'][:3]
+        )
+    )
+    ranking_rate = (ranked_queries / total_queries * 100) if total_queries else 0
+    local_rate = (in_top_3_local / total_local_listings * 100) if total_local_listings else 0
+
+    template = jinja2.Template(template_string)
     html_report = template.render(
         timestamp=datetime.now(pytz.timezone('America/New_York')).strftime("%Y-%m-%d %I:%M:%S %p EST"),
         target_url=target_url,
         total_queries=total_queries,
         ranked_queries=ranked_queries,
-        ranking_rate=ranking_rate,
+        ranking_rate=f"{ranking_rate:.1f}",
+        total_local_listings=total_local_listings,
+        in_top_3_local=in_top_3_local,
+        local_rate=f"{local_rate:.1f}",
         results=results,
         keywords=keywords,
         locations=locations,
         ranking_matrix=ranking_matrix,
         competitor_data=competitor_data,
         local_data=local_data,
-        total_local_listings=total_local_listings,
-        in_top_3_local=in_top_3_local,
-        local_rate=local_rate
+        client_logo_base64=client_logo_base64
     )
-    
     return html_report
 
+# --------------------------------------------------------------------------
+# Main App (UI from 1.5.5, but location validation + concurrency from 1.4)
+# --------------------------------------------------------------------------
 def main():
-    # Get version number from first line comment
-    with open(__file__, 'r') as file:
-        first_line = file.readline().strip()
-        version = first_line.replace('# Version ', '')
+    script_path = os.path.basename(__file__)
+    version = "Unknown"
+    try:
+        with open(script_path, 'r') as file:
+            first_line = file.readline().strip()
+            version = first_line.replace('# Version ', '')
+    except:
+        pass
 
-    # Header with professional styling
-    col1, col2 = st.columns([0.85, 0.15])
+    st.set_page_config(
+        page_title="SEO Rankings Analyzer Pro - Test",
+        page_icon="📊",
+        layout="wide"
+    )
+
+    if 'analysis_complete' not in st.session_state:
+        st.session_state.analysis_complete = False
+        st.session_state.start_time = None
+        st.session_state.results = []
+
+    # Minimal custom CSS for app layout (from 1.5.5)
+    st.markdown("""
+        <style>
+            .stApp {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            .stButton>button {
+                width: 100%;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # App Title + "By Chris Walnum" in UI only
+    col1, col2 = st.columns([0.8, 0.2])
     with col1:
         st.markdown("""
             <div style="display: flex; align-items: center; margin-bottom: 20px;">
@@ -524,342 +573,284 @@ def main():
                 </div>
             </div>
         """, unsafe_allow_html=True)
+        # "By Chris Walnum" in the UI only:
+        st.markdown(
+            '<p style="color: #777; font-size: 14px; margin-top: -10px;">By Chris Walnum</p>',
+            unsafe_allow_html=True
+        )
     with col2:
-        st.markdown(f'<p style="color: #666; font-size: 14px; margin-top: 15px; text-align: right;">v{version}</p>', unsafe_allow_html=True)
+        st.markdown(
+            f'<p style="color: #666; font-size: 14px; margin-top: 15px; text-align: right;">v{version}</p>',
+            unsafe_allow_html=True
+        )
+
     st.markdown("""
         <div style="background-color: #f8f9fa; padding: 1em; border-radius: 0.5em; margin: 1em 0;">
             Analyze a website's search rankings across multiple locations with detailed insights.
         </div>
     """, unsafe_allow_html=True)
 
-    # Sidebar for inputs with improved UX
+    # Sidebar
     with st.sidebar:
         st.header("Analysis Configuration")
-        
-        # Target URL input with validation
-        target_url = st.text_input(
-            "Target Website URL",
-            placeholder="example.com",
-            help="Enter your website's domain without http:// or www"
-        )
+        target_url = st.text_input("Target Website URL", placeholder="example.com")
         if target_url:
-            target_url = target_url.replace('http://', '').replace('https://', '').replace('www.', '').rstrip('/')
+            target_url = (
+                target_url
+                .replace('http://', '')
+                .replace('https://', '')
+                .replace('www.', '')
+                .rstrip('/')
+            )
 
-        # Keywords input
         st.markdown("### Keywords")
-        st.markdown("Enter one keyword per line")
-        keywords = st.text_area("", placeholder="Enter your keywords here", key="keywords")
-        
-        # Locations input
+        keywords = st.text_area("", placeholder="One keyword per line")
+
         st.markdown("### Locations")
-        st.markdown("""Enter one location per line:
-- City, State (e.g., New York, NY)
-- ZIP code (e.g., 90210)""")
-        locations = st.text_area("", placeholder="Enter your locations here", key="locations")
+        locations = st.text_area("", placeholder="City, State or 5-digit ZIP")
 
-        analyze_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
+        st.markdown("### Client Logo (optional)")
+        client_logo_file = st.file_uploader("Upload PNG/JPG", type=["png", "jpg", "jpeg"])
 
-    # Main content area with improved error handling and progress tracking
+        analyze_button = st.button("🚀 Run Analysis")
+
+    # Run Analysis
     if analyze_button:
         if not all([target_url, keywords, locations]):
-            st.error("Please fill in all required fields before running the analysis.")
+            st.error("Please fill in the URL, keywords, and locations.")
             return
-        
+
+        if "VALUESERP_API_KEY" not in st.secrets:
+            st.error("No ValueSERP API key found in secrets. Please configure it.")
+            return
+
         st.session_state.start_time = time.time()
-        
-        with st.spinner("🔍 Analyzing search rankings..."):
-            # Process inputs
-            keyword_list = [k.strip() for k in keywords.split('\n') if k.strip()]
-            location_list = [l.strip() for l in locations.split('\n') if l.strip()]
-            
-            # Process locations
-            processed_locations = []
-            invalid_locations = []
-            for loc in location_list:
-                loc = loc.strip()
-                if not loc:  # Skip empty lines
-                    continue
-                    
-                # Check if it's a ZIP code
-                if loc.isdigit():
-                    if len(loc) == 5:
-                        processed_locations.append(loc)  # Store ZIP code as string
-                    else:
-                        invalid_locations.append(f"• {loc} (invalid ZIP code - must be 5 digits)")
-                # Check if it's City, State format
+
+        keyword_list = [k.strip() for k in keywords.split('\n') if k.strip()]
+        location_list = [l.strip() for l in locations.split('\n') if l.strip()]
+
+        # Process locations (from 1.4 approach, with debug logs)
+        processed_locations = []
+        invalid_locs = []
+        for loc in location_list:
+            if loc.isdigit():
+                if len(loc) == 5:
+                    processed_locations.append(loc)  # ZIP
                 else:
-                    parts = [p.strip() for p in loc.split(',')]
-                    if len(parts) == 2:
-                        processed_locations.append({
-                            'city': parts[0],
-                            'state': parts[1].strip()
-                        })
-                    else:
-                        invalid_locations.append(f"• {loc} (invalid format - use 'City, State' or 5-digit ZIP)")
+                    invalid_locs.append(f"• {loc} (invalid ZIP code length)")
+            else:
+                parts = [p.strip() for p in loc.split(',')]
+                if len(parts) == 2:
+                    processed_locations.append({'city': parts[0], 'state': parts[1]})
+                else:
+                    invalid_locs.append(f"• {loc} (invalid format - use 'City, State' or 5-digit ZIP)")
 
-            # Show error message for invalid locations and stop processing
-            if invalid_locations:
-                error_message = """Invalid location formats detected:
+        if invalid_locs:
+            st.error("Invalid location format:\n" + "\n".join(invalid_locs))
+            return
 
-{}
+        # Validate locations in parallel with debug logs (from 1.4)
+        with st.expander("📍 Location Validation Progress", expanded=True):
+            progress_text = st.empty()
+            progress_bar = st.progress(0)
+            valid_locations = []
+            skipped_locations = []
 
-Please use either:
-- City, State (e.g., New York, NY)
-- ZIP code (e.g., 90210)
+            def validate_location_batch(locs):
+                return [loc for loc in locs if validate_location(loc)]
 
-Please correct all location formats before running the analysis."""
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                chunk_size = max(1, len(processed_locations) // 3)
+                location_chunks = [
+                    processed_locations[i:i+chunk_size]
+                    for i in range(0, len(processed_locations), chunk_size)
+                ]
+                futures = {
+                    executor.submit(validate_location_batch, chunk): i
+                    for i, chunk in enumerate(location_chunks)
+                }
+                done_chunks = 0
+                for fut in as_completed(futures):
+                    batch_result = fut.result()
+                    idx = futures[fut]
+                    chunk = location_chunks[idx]
 
-                # Join invalid locations with explicit newlines
-                invalid_list = "\n".join(invalid_locations)
-                
-                st.error(error_message.format(invalid_list))
+                    # Check which were skipped
+                    for loc in chunk:
+                        if loc not in batch_result:
+                            if isinstance(loc, dict):
+                                loc_str = f"{loc['city']}, {loc['state']}"
+                                skipped_locations.append(loc_str)
+                            else:
+                                skipped_locations.append(loc)
+                        else:
+                            valid_locations.append(loc)
+
+                    done_chunks += 1
+                    progress_bar.progress(done_chunks / len(location_chunks))
+                    progress_text.text(f"Validated {done_chunks}/{len(location_chunks)} chunks...")
+
+            if skipped_locations:
+                st.warning("Skipped:\n" + "\n".join(skipped_locations))
+
+            if not valid_locations:
+                st.error("No valid locations remain.")
                 return
 
-            # Validate locations with progress bar
-            with st.expander("📍 Location Validation Progress", expanded=True):
-                progress_text = st.empty()
-                progress_bar = st.progress(0)
-                valid_locations = []
-                
-                def validate_location_batch(locations):
-                    return [loc for loc in locations if validate_location(loc)]
-                
-                # Process location validation in parallel
-                skipped_locations = []  # Track skipped locations
-                with ThreadPoolExecutor(max_workers=3) as executor:
-                    chunk_size = max(1, len(processed_locations) // 3)
-                    location_chunks = [processed_locations[i:i + chunk_size] 
-                                    for i in range(0, len(processed_locations), chunk_size)]
-                    
-                    future_to_chunk = {executor.submit(validate_location_batch, chunk): i 
-                                     for i, chunk in enumerate(location_chunks)}
-                    
-                    completed_chunks = 0
-                    for future in as_completed(future_to_chunk):
-                        chunk_valid_locations = future.result()
-                        
-                        # Check which locations were skipped in this chunk
-                        chunk_index = future_to_chunk[future]
-                        chunk = location_chunks[chunk_index]
-                        for loc in chunk:
-                            if isinstance(loc, str):  # ZIP code
-                                if loc not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
-                                    skipped_locations.append(loc)
-                            else:  # city_state
-                                loc_str = f"{loc['city']}, {loc['state']}"
-                                if loc not in chunk_valid_locations:
-                                    skipped_locations.append(loc_str)
-                        
-                        valid_locations.extend(chunk_valid_locations)
-                        completed_chunks += 1
-                        progress_bar.progress(completed_chunks / len(location_chunks))
-                        progress_text.text(f"Validated {completed_chunks}/{len(location_chunks)} location groups...")
-                
-                # Show warning about skipped locations
-                if skipped_locations:
-                    warning_locations = "\n• ".join(skipped_locations)
-                    st.warning(f"""The following locations could not be validated and will be skipped:
-- {warning_locations}
+        # Build search queries
+        search_queries = []
+        for loc in valid_locations:
+            if isinstance(loc, str):
+                location_str = loc
+            else:
+                location_str = f"{loc['city']}, {loc['state']}"
+            for kw in keyword_list:
+                search_queries.append({
+                    'keyword': kw,
+                    'location': location_str,
+                    'query': f"{kw} {location_str}"
+                })
 
-Please check for typos or verify these locations exist.""")
-                    
-                # Only continue if we have at least one valid location
-                if not valid_locations:
-                    st.error("No valid locations found. Please check your inputs and try again.")
-                    return
+        # Parallel SERP calls
+        with st.expander("🔍 Rankings Analysis Progress", expanded=True):
+            progress_text = st.empty()
+            progress_bar = st.progress(0)
+            results = parallel_process_queries(
+                search_queries,
+                target_url,
+                progress_text,
+                progress_bar,
+                st.secrets["VALUESERP_API_KEY"]
+            )
 
-# Create search queries
-            search_queries = []
-            for location in valid_locations:
-                if isinstance(location, str):  # ZIP code
-                    location_string = location
-                else:  # city_state dict
-                    location_string = f"{location['city']}, {location['state']}"
-                
-                for keyword in keyword_list:
-                    search_queries.append({
-                        'keyword': keyword,
-                        'location': location_string,
-                        'query': f"{keyword} {location_string}"
-                    })
+        st.session_state.results = results
+        st.session_state.analysis_complete = True
+        st.session_state.analysis_duration = round(time.time() - st.session_state.start_time, 1)
+        st.info(f"✨ Analysis completed in {st.session_state.analysis_duration} seconds.")
 
-            # Analyze rankings with parallel processing
-            with st.expander("🔍 Rankings Analysis Progress", expanded=True):
-                progress_text = st.empty()
-                progress_bar = st.progress(0)
-                results = parallel_process_queries(search_queries, target_url, progress_text, progress_bar)
-
-            analysis_duration = round(time.time() - st.session_state.start_time, 1)
-            st.session_state.results = results
-            st.session_state.analysis_complete = True
-            st.session_state.analysis_duration = analysis_duration
-            
-            # Add timing information
-            st.info(f"✨ Analysis completed in {analysis_duration} seconds")
-
-    # Display results if analysis is complete
-    if st.session_state.analysis_complete and hasattr(st.session_state, 'results'):
+    # Display results
+    if st.session_state.analysis_complete and st.session_state.results:
         results = st.session_state.results
-        
-        # Summary metrics with enhanced styling
+        df_overview = pd.DataFrame(results)
+
         st.markdown("### 📊 Analysis Summary")
-        col1, col2, col3 = st.columns(3)
         total_queries = len(results)
         ranked_queries = len([r for r in results if '#' in r['target_position']])
-        
-        # Local metrics calculation
-        total_local_listings = len([r for r in results if r['local_results']])
-        in_top_3_local = len([r for r in results if any(
-            business.get('title', '').lower() == target_url.lower() 
-            for business in r.get('local_results', [])[:3]
-        )])
-        local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
+        total_local_listings = sum(1 for r in results if r['local_results'])
+        in_top_3_local = sum(
+            1 for r in results if any(
+                b.get('title', '').lower() == target_url.lower()
+                for b in r['local_results'][:3]
+            )
+        )
+        local_rate = (in_top_3_local / total_local_listings * 100) if total_local_listings else 0
 
-        with col1:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Total Queries</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {total_queries}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col2:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>First Page Rankings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {ranked_queries}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col3:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Ranking Rate</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {(ranked_queries/total_queries*100):.1f}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        
+        colA, colB, colC = st.columns(3)
+        with colA:
+            st.metric("Total Queries", total_queries)
+        with colB:
+            st.metric("First Page Rankings", ranked_queries)
+        with colC:
+            if total_queries:
+                st.metric("Ranking Rate", f"{(ranked_queries/total_queries*100):.1f}%")
+            else:
+                st.metric("Ranking Rate", "0.0%")
+
         st.markdown("### 📍 Local Rankings Summary")
-        col4, col5, col6 = st.columns(3)
+        colD, colE, colF = st.columns(3)
+        with colD:
+            st.metric("Total Local Listings", total_local_listings)
+        with colE:
+            st.metric("Top 3", in_top_3_local)
+        with colF:
+            st.metric("Local Rate", f"{local_rate:.1f}%")
 
-        with col4:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Total Local Listings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {total_local_listings}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col5:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>In Top 3 Listings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {in_top_3_local}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col6:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Top 3 Rate</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {local_rate}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-
-        # Rankings overview with enhanced styling
+        # Pivot table
         st.markdown("### 📈 Rankings Overview")
-        df_overview = pd.DataFrame(results)
-        
-        # Create pivot table with aggregation that takes minimum rank
         pivot_data = pd.pivot_table(
             df_overview,
             index='location',
             columns='keyword',
             values='target_position',
-            aggfunc=lambda x: max(x, key=lambda y: float('inf') if y == 'Not on Page 1' else float(y.replace('#', '')))
+            aggfunc=lambda x: max(
+                x,
+                key=lambda y: float('inf') if y == 'Not on Page 1' else float(y.replace('#', ''))
+            )
         )
-        
-        # Style the dataframe
+
         def style_ranking(val):
-            if '#' in str(val):
+            if isinstance(val, str) and '#' in val:
                 return 'background-color: #dcfce7; color: #166534'
-            return 'background-color: #fee2e2; color: #991b1b'
-        
+            elif val == 'Not on Page 1':
+                return 'background-color: #fee2e2; color: #991b1b'
+            return ''
+
         styled_pivot = pivot_data.style.applymap(style_ranking)
         st.dataframe(styled_pivot, height=400)
 
-        # Detailed results in tabs
+        # Tabs for detailed results
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
-        
         with tab1:
             for result in results:
-                with st.expander(f"{result['keyword']} in {result['location']}"):
-                    for idx, org in enumerate(result['organic_results'], 1):
-                        st.markdown(f"**#{idx}** - {org.get('title', 'N/A')}")
+                label = f"{result['keyword']} in {result['location']}"
+                with st.expander(label):
+                    for i, org in enumerate(result['organic_results'], 1):
+                        st.markdown(f"**#{i}** - {org.get('title', 'N/A')}")
                         st.markdown(f"Domain: {org.get('domain', 'N/A')}")
                         st.markdown("---")
-
         with tab2:
             for result in results:
-                with st.expander(f"{result['keyword']} in {result['location']}"):
-                    for idx, loc in enumerate(result['local_results'], 1):
-                        st.markdown(f"**#{idx}** - {loc.get('title', 'N/A')}")
-                        st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
+                label = f"{result['keyword']} in {result['location']}"
+                with st.expander(label):
+                    for i, loc in enumerate(result['local_results'], 1):
+                        st.markdown(f"**#{i}** - {loc.get('title', 'N/A')}")
+                        rating = loc.get('rating')
+                        if rating:
+                            st.markdown(f"Rating: {rating}★ | Reviews: {loc.get('reviews', 0)}")
+                        else:
+                            st.markdown(f"Rating: N/A | Reviews: {loc.get('reviews', 0)}")
                         st.markdown("---")
 
-# Generate HTML report
-        html_report = generate_html_report(results, target_url)
+        # Client logo
+        client_logo_b64 = None
+        if client_logo_file:
+            client_logo_b64 = base64.b64encode(client_logo_file.read()).decode()
 
-        # Export options
+        # Generate final PDF/HTML
+        html_report = generate_html_report(results, target_url, client_logo_b64)
+
         st.subheader("📥 Export Options")
-        col1, col2, col3 = st.columns(3)
-        
-        # Clean domain name for filename
-        clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
-        timestamp = datetime.now().strftime("%Y%m%d")
-        base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
-        
-        with col1:
+        c1, c2, c3 = st.columns(3)
+        base_filename = (
+            f"{target_url.replace('/','').replace(':','').replace('.','_')}"
+            f"_SEO_Analysis_Report_{datetime.now().strftime('%Y%m%d')}"
+        )
+
+        with c1:
             st.download_button(
                 label="📄 Download HTML Report",
                 data=html_report,
                 file_name=f"{base_filename}.html",
                 mime="text/html"
             )
-        
-        with col2:
-            csv = df_overview.to_csv(index=False)
+        with c2:
+            csv_data = df_overview.to_csv(index=False)
             st.download_button(
                 label="📊 Download CSV",
-                data=csv,
+                data=csv_data,
                 file_name=f"{base_filename}.csv",
                 mime="text/csv"
             )
-        with col3:
+        with c3:
             pdf_bytes = io.BytesIO()
-            pisa.CreatePDF(html_report, dest=pdf_bytes)
+            pisa.CreatePDF(io.StringIO(html_report), dest=pdf_bytes)
             pdf_bytes.seek(0)
-            
             st.download_button(
                 label="📑 Download PDF Report",
                 data=pdf_bytes,
                 file_name=f"{base_filename}.pdf",
                 mime="application/pdf"
             )
-        
+
 if __name__ == "__main__":
     main()
