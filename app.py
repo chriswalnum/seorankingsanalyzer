@@ -1,4 +1,4 @@
-# Version 1.5.1
+# Version 1.5.2
 import streamlit as st
 import pandas as pd
 import requests
@@ -211,266 +211,54 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     return results
 
 def generate_html_report(results, target_url, logo_html=""):
-    # HTML template for the PDF/HTML export
-    template_string = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>SEO Analysis Report</title>
-        <style>
-            @page {
-                margin: 2.5cm;
-            }
-            body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                color: #1a1a1a;
-                margin: 0;
-                padding: 0;
-            }
-            .header {
-                text-align: center;
-                margin-bottom: 3rem;
-                border-bottom: 2px solid #2563eb;
-                padding-bottom: 1rem;
-            }
-            .logo-container {
-                margin-bottom: 10px;
-                text-align: center;
-            }
-            .logo-container img {
-                max-height: 80px;
-            }
-            .header h1 {
-                color: #2563eb;
-                font-size: 28px;
-                margin-bottom: 0.5rem;
-            }
-            .metrics {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 1.5rem;
-                margin: 2rem 0;
-            }
-            .metric-card {
-                background: #f8fafc;
-                padding: 1.5rem;
-                border-radius: 8px;
-                border: 1px solid #e2e8f0;
-                text-align: center;
-            }
-            .section-title {
-                color: #2563eb;
-                font-size: 24px;
-                margin: 2.5rem 0 1.5rem;
-                border-bottom: 2px solid #e2e8f0;
-                padding-bottom: 0.5rem;
-            }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1.5rem 0;
-            }
-            th {
-                background: #f1f5f9;
-                color: #1e40af;
-                font-weight: 600;
-                text-align: left;
-            }
-            th, td {
-                padding: 12px;
-                border: 1px solid #e2e8f0;
-            }
-            .status-badge {
-                display: inline-block;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            .status-success {
-                background: #dcfce7;
-                color: #166534;
-            }
-            .status-failure {
-                background: #fee2e2;
-                color: #991b1b;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="logo-container">
-                {{ logo_html|safe }}
-            </div>
-            <h1>SEO Rankings Analysis Report</h1>
-            <p>{{ target_url }}</p>
-            <p>Generated on {{ timestamp }}</p>
-        </div>
-
-        <div class="section-title">Organic Search Rankings Summary</div>
-        <div class="metrics">
-            <div class="metric-card">
-                <h3>Total Queries</h3>
-                <div class="metric-value">{{ total_queries }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>First Page Rankings</h3>
-                <div class="metric-value">{{ ranked_queries }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>Ranking Rate</h3>
-                <div class="metric-value">{{ ranking_rate }}%</div>
-            </div>
-        </div>
-
-        <div class="section-title">Local Map Rankings Summary</div>
-        <div class="metrics">
-            <div class="metric-card">
-                <h3>Total Local Listings</h3>
-                <div class="metric-value">{{ total_local_listings }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>In Top 3 Listings</h3>
-                <div class="metric-value">{{ in_top_3_local }}</div>
-            </div>
-            <div class="metric-card">
-                <h3>Top 3 Rate</h3>
-                <div class="metric-value">{{ local_rate }}%</div>
-            </div>
-        </div>            
-
-        <div class="section-title">Rankings Overview</div>
-        {% for keyword_group in keywords|batch(5) %}
-        <div class="keyword-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Location</th>
-                        {% for keyword in keyword_group %}
-                        <th>{{ keyword }}</th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for location in locations %}
-                    <tr>
-                        <td>{{ location }}</td>
-                        {% for keyword in keyword_group %}
-                        <td style="text-align: center">
-                            {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
-                            {% if position == 'n/a' %}
-                            <span style="color: #94a3b8">-</span>
-                            {% elif position == 'Not on Page 1' %}
-                            <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
-                            {% else %}
-                            <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% endfor %}
-
-        <div class="section-title">Top Competitors by Keyword</div>
-        {% for keyword in keywords %}
-        <table class="competitors-table">
-            <thead>
-                <tr>
-                    <th colspan="3">{{ keyword }}</th>
-                </tr>
-                <tr>
-                    <th style="width: 80px">Rank</th>
-                    <th>Domain</th>
-                    <th style="width: 120px">Location</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for result in competitor_data.get(keyword, []) %}
-                <tr>
-                    <td class="competitor-rank">#{{ result.rank }}</td>
-                    <td>{{ result.domain }}</td>
-                    <td>{{ result.location }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% endfor %}
-
-        <div class="section-title">Local Business Results</div>
-        {% for keyword in keywords %}
-        <table class="competitors-table">
-            <thead>
-                <tr>
-                    <th colspan="5">{{ keyword }}</th>
-                </tr>
-                <tr>
-                    <th style="width: 80px">Rank</th>
-                    <th>Business Name</th>
-                    <th style="width: 100px">Rating</th>
-                    <th style="width: 100px">Reviews</th>
-                    <th style="width: 120px">Location</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for result in local_data.get(keyword, []) %}
-                <tr>
-                    <td class="competitor-rank">#{{ loop.index }}</td>
-                    <td>{{ result.title }}</td>
-                    <td style="text-align: center">{% if result.rating %}★ {{ "%.1f"|format(result.rating|float) }}{% endif %}</td>
-                    <td style="text-align: center">{{ result.reviews }}</td>
-                    <td class="location-cell">{{ result.location }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% endfor %}
-    </body>
-    </html>
     """
+    Generates a PDF/HTML with:
+    - Minimal Table of Contents
+    - Combined 'Top Competitors' table
+    - Combined 'Local Business Results' table
+    - Page numbers in the footer
+    """
+    # Flatten competitor_data and local_data for single tables
+    competitor_data_flat = []
+    local_data_flat = []
     
-    # Process data for template
+    # Build competitor_data from the existing approach
+    # - We'll store for each (keyword -> top 3 organic) the competitor domain, rank, location
+    competitor_dict = {}
+    # Similarly for local_data
+    local_dict = {}
+    
+    # 1) Identify all keywords & locations
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
     
-    # Create ranking matrix
+    # 2) Build a ranking matrix (same as before) for the 'Rankings Overview' table
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
     
-    # Process competitor data
-    competitor_data = {}
-    for result in results:
-        keyword = result['keyword']
-        if keyword not in competitor_data:
-            competitor_data[keyword] = []
-            
-        competitors = result['organic_results'][:3]
-        for rank, comp in enumerate(competitors, 1):
-            competitor_data[keyword].append({
-                'rank': rank,
-                'domain': comp.get('domain', 'N/A'),
-                'location': result['location']
-            })
+    # 3) Extract competitor data from each result
+    for r in results:
+        keyword = r['keyword']
+        location = r['location']
+        if 'organic_results' in r:
+            for rank_idx, comp in enumerate(r['organic_results'], start=1):
+                competitor_data_flat.append({
+                    'keyword': keyword,
+                    'rank': rank_idx,
+                    'domain': comp.get('domain', 'N/A'),
+                    'location': location
+                })
+        if 'local_results' in r:
+            for rank_idx, loc_res in enumerate(r['local_results'], start=1):
+                local_data_flat.append({
+                    'keyword': keyword,
+                    'rank': rank_idx,
+                    'title': loc_res.get('title', 'N/A'),
+                    'rating': loc_res.get('rating', None),
+                    'reviews': loc_res.get('reviews', 0),
+                    'location': location
+                })
     
-    # Process local business data
-    local_data = {}
-    for result in results:
-        keyword = result['keyword']
-        location = result['location']
-        if keyword not in local_data:
-            local_data[keyword] = []
-            
-        for local_result in result['local_results']:
-            local_data[keyword].append({
-                'title': local_result.get('title', 'N/A'),
-                'rating': local_result.get('rating', None),
-                'reviews': local_result.get('reviews', 0),
-                'location': location
-            })
-    
+    # Summaries
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
     ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
@@ -485,6 +273,262 @@ def generate_html_report(results, target_url, logo_html=""):
     now_est = datetime.now(pytz.timezone('America/New_York'))
     timestamp_str = now_est.strftime("%Y-%m-%d %I:%M:%S %p EST")
     
+    # HTML template with:
+    # - Minimal Table of Contents
+    # - Combined competitor table
+    # - Combined local results table
+    # - Page number CSS in the @page rule
+    template_string = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SEO Analysis Report</title>
+    <style>
+        /* Page margin & page numbering */
+        @page {
+            margin: 2.5cm;
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 12px;
+                color: #666;
+            }
+        }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 1rem;
+        }
+        .logo-container {
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .logo-container img {
+            max-height: 80px;
+        }
+        .header h1 {
+            color: #2563eb;
+            font-size: 28px;
+            margin-bottom: 0.5rem;
+        }
+        .table-of-contents {
+            margin: 1rem 2rem;
+        }
+        .table-of-contents h2 {
+            font-size: 20px;
+            color: #2563eb;
+            margin-bottom: 0.5rem;
+        }
+        .table-of-contents ol {
+            margin-left: 1.2rem;
+        }
+        .section-title {
+            color: #2563eb;
+            font-size: 22px;
+            margin: 2rem 0 1rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 0.5rem;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .metric-card {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.9rem; /* Slightly smaller font to save space */
+        }
+        th {
+            background: #f1f5f9;
+            color: #1e40af;
+            font-weight: 600;
+            text-align: left;
+            padding: 8px;
+        }
+        td {
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .keyword-col {
+            width: 180px;
+        }
+        .rank-col {
+            width: 60px;
+            text-align: center;
+        }
+        .location-col {
+            width: 140px;
+        }
+        .section-break {
+            page-break-before: always;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo-container">
+            {{ logo_html|safe }}
+        </div>
+        <h1>SEO Rankings Analysis Report</h1>
+        <p>{{ target_url }}</p>
+        <p>Generated on {{ timestamp }}</p>
+    </div>
+
+    <!-- Table of Contents -->
+    <div class="table-of-contents">
+        <h2>Table of Contents</h2>
+        <ol>
+            <li>Organic Search Rankings Summary</li>
+            <li>Local Map Rankings Summary</li>
+            <li>Rankings Overview</li>
+            <li>Top Competitors</li>
+            <li>Local Business Results</li>
+        </ol>
+    </div>
+
+    <!-- Organic Search Rankings Summary -->
+    <div class="section-title">Organic Search Rankings Summary</div>
+    <div class="metrics">
+        <div class="metric-card">
+            <h3>Total Queries</h3>
+            <div class="metric-value">{{ total_queries }}</div>
+        </div>
+        <div class="metric-card">
+            <h3>First Page Rankings</h3>
+            <div class="metric-value">{{ ranked_queries }}</div>
+        </div>
+        <div class="metric-card">
+            <h3>Ranking Rate</h3>
+            <div class="metric-value">{{ ranking_rate }}%</</div>
+        </div>
+    </div>
+
+    <!-- Local Map Rankings Summary -->
+    <div class="section-title">Local Map Rankings Summary</div>
+    <div class="metrics">
+        <div class="metric-card">
+            <h3>Total Local Listings</h3>
+            <div class="metric-value">{{ total_local_listings }}</div>
+        </div>
+        <div class="metric-card">
+            <h3>In Top 3 Listings</h3>
+            <div class="metric-value">{{ in_top_3_local }}</div>
+        </div>
+        <div class="metric-card">
+            <h3>Top 3 Rate</h3>
+            <div class="metric-value">{{ local_rate }}%</div>
+        </div>
+    </div>
+
+    <!-- Rankings Overview -->
+    <div class="section-title">Rankings Overview</div>
+    {% for keyword_group in keywords|batch(5) %}
+    <table>
+        <thead>
+            <tr>
+                <th>Location</th>
+                {% for keyword in keyword_group %}
+                <th>{{ keyword }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for location in locations %}
+            <tr>
+                <td>{{ location }}</td>
+                {% for keyword in keyword_group %}
+                <td style="text-align: center">
+                    {% set position = ranking_matrix.get((location, keyword), 'n/a') %}
+                    {% if position == 'n/a' %}
+                    <span style="color: #94a3b8">-</span>
+                    {% elif position == 'Not on Page 1' %}
+                    <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
+                    {% else %}
+                    <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+
+    <!-- Combined Top Competitors Section -->
+    <div class="section-break"></div>
+    <div class="section-title">Top Competitors</div>
+    <table>
+        <thead>
+            <tr>
+                <th class="keyword-col">Keyword</th>
+                <th class="rank-col">Rank</th>
+                <th>Domain</th>
+                <th class="location-col">Location</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in competitor_data_flat %}
+            <tr>
+                <td>{{ row.keyword }}</td>
+                <td>#{{ row.rank }}</td>
+                <td>{{ row.domain }}</td>
+                <td>{{ row.location }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Combined Local Business Results Section -->
+    <div class="section-title">Local Business Results</div>
+    <table>
+        <thead>
+            <tr>
+                <th class="keyword-col">Keyword</th>
+                <th class="rank-col">Rank</th>
+                <th>Business Name</th>
+                <th style="width: 80px; text-align:center;">Rating</th>
+                <th style="width: 80px; text-align:center;">Reviews</th>
+                <th class="location-col">Location</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in local_data_flat %}
+            <tr>
+                <td>{{ row.keyword }}</td>
+                <td>#{{ row.rank }}</td>
+                <td>{{ row.title }}</td>
+                <td style="text-align: center">
+                    {% if row.rating %}★ {{ "%.1f"|format(row.rating|float) }}{% endif %}
+                </td>
+                <td style="text-align: center">{{ row.reviews }}</td>
+                <td>{{ row.location }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
+""".strip()
+
     template = jinja2.Template(template_string)
     html_report = template.render(
         timestamp=timestamp_str,
@@ -496,8 +540,8 @@ def generate_html_report(results, target_url, logo_html=""):
         keywords=keywords,
         locations=locations,
         ranking_matrix=ranking_matrix,
-        competitor_data=competitor_data,
-        local_data=local_data,
+        competitor_data_flat=competitor_data_flat,
+        local_data_flat=local_data_flat,
         total_local_listings=total_local_listings,
         in_top_3_local=in_top_3_local,
         local_rate=local_rate,
@@ -512,12 +556,11 @@ def main():
         first_line = file.readline().strip()
         version = first_line.replace('# Version ', '')
 
-    # Header with "By Chris Walnum" subheading
+    # Header (with "By Chris Walnum" subheading) - same as v1.5.1
     col1, col2 = st.columns([0.85, 0.15])
     with col1:
         st.markdown("""
             <div style="display: flex; align-items: center; margin-bottom: 20px;">
-                <!-- This 🎯 icon is for the UI only; user-uploaded logo is NOT displayed here -->
                 <div style="color: #FF4B4B; font-size: 2.5em; margin-right: 10px;">🎯</div>
                 <div>
                     <div style="color: #262730; font-size: 1.8em; font-weight: 600;">
@@ -651,218 +694,4 @@ Please correct all location formats before running the analysis."""
                         
                         # Determine which were skipped in this chunk
                         for loc in chunk:
-                            if isinstance(loc, str):
-                                if loc not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
-                                    skipped_locations.append(loc)
-                            else:
-                                loc_str = f"{loc['city']}, {loc['state']}"
-                                if loc not in chunk_valid_locations:
-                                    skipped_locations.append(loc_str)
-                        
-                        valid_locations.extend(chunk_valid_locations)
-                        completed_chunks += 1
-                        progress_bar.progress(completed_chunks / len(location_chunks))
-                        progress_text.text(f"Validated {completed_chunks}/{len(location_chunks)} location groups...")
-                
-                if skipped_locations:
-                    warning_locations = "\n• ".join(skipped_locations)
-                    st.warning(f"""The following locations could not be validated and will be skipped:
-- {warning_locations}
-
-Please check for typos or verify these locations exist.""")
-                    
-                if not valid_locations:
-                    st.error("No valid locations found. Please check your inputs and try again.")
-                    return
-
-            # Create search queries
-            search_queries = []
-            for location in valid_locations:
-                if isinstance(location, str):
-                    location_string = location
-                else:
-                    location_string = f"{location['city']}, {location['state']}"
-                
-                for keyword in keyword_list:
-                    search_queries.append({
-                        'keyword': keyword,
-                        'location': location_string,
-                        'query': f"{keyword} {location_string}"
-                    })
-
-            # Analyze rankings
-            with st.expander("🔍 Rankings Analysis Progress", expanded=True):
-                progress_text = st.empty()
-                progress_bar = st.progress(0)
-                results = parallel_process_queries(search_queries, target_url, progress_text, progress_bar)
-
-            analysis_duration = round(time.time() - st.session_state.start_time, 1)
-            st.session_state.results = results
-            st.session_state.analysis_complete = True
-            st.session_state.analysis_duration = analysis_duration
-            
-            st.info(f"✨ Analysis completed in {analysis_duration} seconds")
-
-    # Display results if analysis is complete
-    if st.session_state.analysis_complete and hasattr(st.session_state, 'results'):
-        results = st.session_state.results
-        
-        # Summary metrics
-        st.markdown("### 📊 Analysis Summary")
-        col1, col2, col3 = st.columns(3)
-        total_queries = len(results)
-        ranked_queries = len([r for r in results if '#' in r['target_position']])
-        
-        total_local_listings = len([r for r in results if r['local_results']])
-        in_top_3_local = len([r for r in results if any(
-            business.get('title', '').lower() == target_url.lower() 
-            for business in r.get('local_results', [])[:3]
-        )])
-        local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
-
-        with col1:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Total Queries</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {total_queries}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col2:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>First Page Rankings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {ranked_queries}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col3:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Ranking Rate</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {(ranked_queries/total_queries*100):.1f}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        
-        st.markdown("### 📍 Local Rankings Summary")
-        col4, col5, col6 = st.columns(3)
-        with col4:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Total Local Listings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {total_local_listings}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col5:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>In Top 3 Listings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {in_top_3_local}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        with col6:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Top 3 Rate</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {local_rate}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-
-        # Rankings overview
-        st.markdown("### 📈 Rankings Overview")
-        df_overview = pd.DataFrame(results)
-        
-        pivot_data = pd.pivot_table(
-            df_overview,
-            index='location',
-            columns='keyword',
-            values='target_position',
-            aggfunc=lambda x: max(
-                x, key=lambda y: float('inf') if y == 'Not on Page 1' else float(y.replace('#', ''))
-            )
-        )
-        
-        def style_ranking(val):
-            if '#' in str(val):
-                return 'background-color: #dcfce7; color: #166534'
-            return 'background-color: #fee2e2; color: #991b1b'
-        
-        styled_pivot = pivot_data.style.applymap(style_ranking)
-        st.dataframe(styled_pivot, height=400)
-
-        # Detailed results in tabs
-        tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
-        
-        with tab1:
-            for result in results:
-                with st.expander(f"{result['keyword']} in {result['location']}"):
-                    for idx, org in enumerate(result['organic_results'], 1):
-                        st.markdown(f"**#{idx}** - {org.get('title', 'N/A')}")
-                        st.markdown(f"Domain: {org.get('domain', 'N/A')}")
-                        st.markdown("---")
-
-        with tab2:
-            for result in results:
-                with st.expander(f"{result['keyword']} in {result['location']}"):
-                    for idx, loc in enumerate(result['local_results'], 1):
-                        st.markdown(f"**#{idx}** - {loc.get('title', 'N/A')}")
-                        st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
-                        st.markdown("---")
-
-        # Generate HTML report (including the user-uploaded logo for PDF)
-        html_report = generate_html_report(results, target_url, logo_html=logo_img_html)
-
-        # Export options
-        st.subheader("📥 Export Options")
-        col1, col2, col3 = st.columns(3)
-        
-        clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
-        timestamp = datetime.now().strftime("%Y%m%d")
-        base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
-        
-        with col1:
-            st.download_button(
-                label="📄 Download HTML Report",
-                data=html_report,
-                file_name=f"{base_filename}.html",
-                mime="text/html"
-            )
-        
-        with col2:
-            csv = df_overview.to_csv(index=False)
-            st.download_button(
-                label="📊 Download CSV",
-                data=csv,
-                file_name=f"{base_filename}.csv",
-                mime="text/csv"
-            )
-        with col3:
-            pdf_bytes = io.BytesIO()
-            pisa.CreatePDF(html_report, dest=pdf_bytes)
-            pdf_bytes.seek(0)
-            
-            st.download_button(
-                label="📑 Download PDF Report",
-                data=pdf_bytes,
-                file_name=f"{base_filename}.pdf",
-                mime="application/pdf"
-            )
-        
-if __name__ == "__main__":
-    main()
+                          
