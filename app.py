@@ -1,4 +1,4 @@
-# Version 1.5.1
+# Version 1.5.2
 import streamlit as st
 import pandas as pd
 import requests
@@ -211,7 +211,10 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     return results
 
 def generate_html_report(results, target_url, logo_html=""):
-    # HTML template for the PDF/HTML export
+    """
+    Generates the HTML/PDF report, but uses a single combined table
+    for top competitors and one combined table for local results.
+    """
     template_string = """
     <!DOCTYPE html>
     <html lang="en">
@@ -309,6 +312,7 @@ def generate_html_report(results, target_url, logo_html=""):
             <p>Generated on {{ timestamp }}</p>
         </div>
 
+        <!-- Organic Search Summary -->
         <div class="section-title">Organic Search Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
@@ -325,6 +329,7 @@ def generate_html_report(results, target_url, logo_html=""):
             </div>
         </div>
 
+        <!-- Local Map Summary -->
         <div class="section-title">Local Map Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
@@ -339,8 +344,9 @@ def generate_html_report(results, target_url, logo_html=""):
                 <h3>Top 3 Rate</h3>
                 <div class="metric-value">{{ local_rate }}%</div>
             </div>
-        </div>            
+        </div>
 
+        <!-- Rankings Overview -->
         <div class="section-title">Rankings Overview</div>
         {% for keyword_group in keywords|batch(5) %}
         <div class="keyword-table">
@@ -376,39 +382,35 @@ def generate_html_report(results, target_url, logo_html=""):
         </div>
         {% endfor %}
 
-        <div class="section-title">Top Competitors by Keyword</div>
-        {% for keyword in keywords %}
-        <table class="competitors-table">
+        <!-- Combined Top Competitors -->
+        <div class="section-title">Top Competitors</div>
+        <table>
             <thead>
                 <tr>
-                    <th colspan="3">{{ keyword }}</th>
-                </tr>
-                <tr>
+                    <th style="width: 180px">Keyword</th>
                     <th style="width: 80px">Rank</th>
                     <th>Domain</th>
                     <th style="width: 120px">Location</th>
                 </tr>
             </thead>
             <tbody>
-                {% for result in competitor_data.get(keyword, []) %}
+                {% for row in competitor_data_flat %}
                 <tr>
-                    <td class="competitor-rank">#{{ result.rank }}</td>
-                    <td>{{ result.domain }}</td>
-                    <td>{{ result.location }}</td>
+                    <td>{{ row.keyword }}</td>
+                    <td>#{{ row.rank }}</td>
+                    <td>{{ row.domain }}</td>
+                    <td>{{ row.location }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% endfor %}
 
+        <!-- Combined Local Business Results -->
         <div class="section-title">Local Business Results</div>
-        {% for keyword in keywords %}
-        <table class="competitors-table">
+        <table>
             <thead>
                 <tr>
-                    <th colspan="5">{{ keyword }}</th>
-                </tr>
-                <tr>
+                    <th style="width: 180px">Keyword</th>
                     <th style="width: 80px">Rank</th>
                     <th>Business Name</th>
                     <th style="width: 100px">Rating</th>
@@ -417,71 +419,66 @@ def generate_html_report(results, target_url, logo_html=""):
                 </tr>
             </thead>
             <tbody>
-                {% for result in local_data.get(keyword, []) %}
+                {% for row in local_data_flat %}
                 <tr>
-                    <td class="competitor-rank">#{{ loop.index }}</td>
-                    <td>{{ result.title }}</td>
-                    <td style="text-align: center">{% if result.rating %}★ {{ "%.1f"|format(result.rating|float) }}{% endif %}</td>
-                    <td style="text-align: center">{{ result.reviews }}</td>
-                    <td class="location-cell">{{ result.location }}</td>
+                    <td>{{ row.keyword }}</td>
+                    <td>#{{ row.rank }}</td>
+                    <td>{{ row.title }}</td>
+                    <td style="text-align: center">{% if row.rating %}★ {{ "%.1f"|format(row.rating|float) }}{% endif %}</td>
+                    <td style="text-align: center">{{ row.reviews }}</td>
+                    <td>{{ row.location }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% endfor %}
     </body>
     </html>
     """
     
-    # Process data for template
+    # Flatten competitor data into a single list
+    competitor_data_flat = []
+    # Flatten local data into a single list
+    local_data_flat = []
+    
+    # Build ranking matrix for the "Rankings Overview"
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
-    
-    # Create ranking matrix
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
-    
-    # Process competitor data
-    competitor_data = {}
-    for result in results:
-        keyword = result['keyword']
-        if keyword not in competitor_data:
-            competitor_data[keyword] = []
-            
-        competitors = result['organic_results'][:3]
-        for rank, comp in enumerate(competitors, 1):
-            competitor_data[keyword].append({
-                'rank': rank,
+
+    # Extract competitor (organic) data & local data from each result
+    for r in results:
+        keyword = r['keyword']
+        location = r['location']
+        # Up to top 3 organic results
+        for rank_idx, comp in enumerate(r.get('organic_results', []), 1):
+            competitor_data_flat.append({
+                'keyword': keyword,
+                'rank': rank_idx,
                 'domain': comp.get('domain', 'N/A'),
-                'location': result['location']
-            })
-    
-    # Process local business data
-    local_data = {}
-    for result in results:
-        keyword = result['keyword']
-        location = result['location']
-        if keyword not in local_data:
-            local_data[keyword] = []
-            
-        for local_result in result['local_results']:
-            local_data[keyword].append({
-                'title': local_result.get('title', 'N/A'),
-                'rating': local_result.get('rating', None),
-                'reviews': local_result.get('reviews', 0),
                 'location': location
             })
-    
+        # Up to top 3 local results
+        for rank_idx, loc_res in enumerate(r.get('local_results', []), 1):
+            local_data_flat.append({
+                'keyword': keyword,
+                'rank': rank_idx,
+                'title': loc_res.get('title', 'N/A'),
+                'rating': loc_res.get('rating', None),
+                'reviews': loc_res.get('reviews', 0),
+                'location': location
+            })
+
+    # Summaries
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
     ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
-    total_local_listings = len([r for r in results if r['local_results']])
-    in_top_3_local = len([r for r in results if any(
+    total_local_listings = sum(1 for r in results if r['local_results'])
+    in_top_3_local = sum(1 for r in results if any(
         business.get('title', '').lower() == target_url.lower() 
         for business in r['local_results'][:3]
-    )])
+    ))
     local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
     
-    # Current timestamp
     now_est = datetime.now(pytz.timezone('America/New_York'))
     timestamp_str = now_est.strftime("%Y-%m-%d %I:%M:%S %p EST")
     
@@ -492,15 +489,14 @@ def generate_html_report(results, target_url, logo_html=""):
         total_queries=total_queries,
         ranked_queries=ranked_queries,
         ranking_rate=ranking_rate,
-        results=results,
-        keywords=keywords,
-        locations=locations,
-        ranking_matrix=ranking_matrix,
-        competitor_data=competitor_data,
-        local_data=local_data,
         total_local_listings=total_local_listings,
         in_top_3_local=in_top_3_local,
         local_rate=local_rate,
+        keywords=keywords,
+        locations=locations,
+        ranking_matrix=ranking_matrix,
+        competitor_data_flat=competitor_data_flat,
+        local_data_flat=local_data_flat,
         logo_html=logo_html
     )
     
@@ -593,9 +589,8 @@ def main():
             invalid_locations = []
             for loc in location_list:
                 loc = loc.strip()
-                if not loc:  # Skip empty lines
+                if not loc:
                     continue
-                    
                 if loc.isdigit():
                     if len(loc) == 5:
                         processed_locations.append(loc)
@@ -649,14 +644,13 @@ Please correct all location formats before running the analysis."""
                         chunk_index = future_to_chunk[future]
                         chunk = location_chunks[chunk_index]
                         
-                        # Determine which were skipped in this chunk
-                        for loc in chunk:
-                            if isinstance(loc, str):
-                                if loc not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
-                                    skipped_locations.append(loc)
+                        for locx in chunk:
+                            if isinstance(locx, str):
+                                if locx not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
+                                    skipped_locations.append(locx)
                             else:
-                                loc_str = f"{loc['city']}, {loc['state']}"
-                                if loc not in chunk_valid_locations:
+                                loc_str = f"{locx['city']}, {locx['state']}"
+                                if locx not in chunk_valid_locations:
                                     skipped_locations.append(loc_str)
                         
                         valid_locations.extend(chunk_valid_locations)
@@ -682,7 +676,6 @@ Please check for typos or verify these locations exist.""")
                     location_string = location
                 else:
                     location_string = f"{location['city']}, {location['state']}"
-                
                 for keyword in keyword_list:
                     search_queries.append({
                         'keyword': keyword,
@@ -690,7 +683,6 @@ Please check for typos or verify these locations exist.""")
                         'query': f"{keyword} {location_string}"
                     })
 
-            # Analyze rankings
             with st.expander("🔍 Rankings Analysis Progress", expanded=True):
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
@@ -700,10 +692,8 @@ Please check for typos or verify these locations exist.""")
             st.session_state.results = results
             st.session_state.analysis_complete = True
             st.session_state.analysis_duration = analysis_duration
-            
             st.info(f"✨ Analysis completed in {analysis_duration} seconds")
 
-    # Display results if analysis is complete
     if st.session_state.analysis_complete and hasattr(st.session_state, 'results'):
         results = st.session_state.results
         
@@ -787,7 +777,6 @@ Please check for typos or verify these locations exist.""")
         # Rankings overview
         st.markdown("### 📈 Rankings Overview")
         df_overview = pd.DataFrame(results)
-        
         pivot_data = pd.pivot_table(
             df_overview,
             index='location',
@@ -797,18 +786,14 @@ Please check for typos or verify these locations exist.""")
                 x, key=lambda y: float('inf') if y == 'Not on Page 1' else float(y.replace('#', ''))
             )
         )
-        
         def style_ranking(val):
             if '#' in str(val):
                 return 'background-color: #dcfce7; color: #166534'
             return 'background-color: #fee2e2; color: #991b1b'
-        
         styled_pivot = pivot_data.style.applymap(style_ranking)
         st.dataframe(styled_pivot, height=400)
 
-        # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
-        
         with tab1:
             for result in results:
                 with st.expander(f"{result['keyword']} in {result['location']}"):
@@ -816,7 +801,6 @@ Please check for typos or verify these locations exist.""")
                         st.markdown(f"**#{idx}** - {org.get('title', 'N/A')}")
                         st.markdown(f"Domain: {org.get('domain', 'N/A')}")
                         st.markdown("---")
-
         with tab2:
             for result in results:
                 with st.expander(f"{result['keyword']} in {result['location']}"):
@@ -825,13 +809,11 @@ Please check for typos or verify these locations exist.""")
                         st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
                         st.markdown("---")
 
-        # Generate HTML report (including the user-uploaded logo for PDF)
+        # Generate HTML report (combined competitor/local tables)
         html_report = generate_html_report(results, target_url, logo_html=logo_img_html)
 
-        # Export options
         st.subheader("📥 Export Options")
         col1, col2, col3 = st.columns(3)
-        
         clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
         timestamp = datetime.now().strftime("%Y%m%d")
         base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
@@ -843,7 +825,6 @@ Please check for typos or verify these locations exist.""")
                 file_name=f"{base_filename}.html",
                 mime="text/html"
             )
-        
         with col2:
             csv = df_overview.to_csv(index=False)
             st.download_button(
@@ -856,13 +837,12 @@ Please check for typos or verify these locations exist.""")
             pdf_bytes = io.BytesIO()
             pisa.CreatePDF(html_report, dest=pdf_bytes)
             pdf_bytes.seek(0)
-            
             st.download_button(
                 label="📑 Download PDF Report",
                 data=pdf_bytes,
                 file_name=f"{base_filename}.pdf",
                 mime="application/pdf"
             )
-        
+
 if __name__ == "__main__":
     main()
