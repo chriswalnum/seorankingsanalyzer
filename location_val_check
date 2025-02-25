@@ -1,0 +1,4 @@
+from geopy.geocoders import Nominatim
+geolocator = Nominatim(user_agent="test_app")
+loc = geolocator.geocode("Rossville, GA, USA")
+print(loc)
