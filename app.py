@@ -1,4 +1,4 @@
-# Version 1.5.1
+# Version 1.5.2
 import streamlit as st
 import pandas as pd
 import requests
@@ -23,10 +23,17 @@ class ThreadSafeRateLimiter:
     def wait(self):
         with self.lock:
             now = time.time()
+            # Wait enough time so that calls_per_second is respected
             time_to_wait = max(0, (1.0 / self.calls_per_second) - (now - self.last_call))
             if time_to_wait > 0:
                 time.sleep(time_to_wait)
             self.last_call = time.time()
+
+# -----------------------------
+# CHANGE #1: 2-second delay per geocoding call
+# (calls_per_second=0.5)
+# -----------------------------
+geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=0.5)
 
 # Page config
 st.set_page_config(
@@ -87,9 +94,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Create a global rate limiter instance
-geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=1)
-
 def validate_location(location):
     """Validate if a location exists using GeoPy"""
     debug_prefix = "[Location Validation]"
@@ -109,6 +113,7 @@ def validate_location(location):
         print(f"{debug_prefix} Search term: {search_term}")
         print(f"{debug_prefix} Attempting geocoding...")
         
+        # Rate-limited geocoding
         geocoding_limiter.wait()
         location_data = geolocator.geocode(search_term)
         
@@ -182,6 +187,7 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     completed = 0
     total = len(search_queries)
     
+    # Create a thread-safe lock for updating progress
     progress_lock = threading.Lock()
     
     def update_progress():
@@ -192,7 +198,10 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
             progress_bar.progress(progress)
             progress_text.text(f"Processed {completed}/{total} queries...")
     
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    # ---------------------------------------------------
+    # CHANGE #2: max_workers=1 (single-threaded)
+    # ---------------------------------------------------
+    with ThreadPoolExecutor(max_workers=1) as executor:
         future_to_query = {
             executor.submit(process_query, query, target_url): query 
             for query in search_queries
@@ -211,7 +220,6 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     return results
 
 def generate_html_report(results, target_url, logo_html=""):
-    # HTML template for the PDF/HTML export
     template_string = """
     <!DOCTYPE html>
     <html lang="en">
@@ -339,7 +347,7 @@ def generate_html_report(results, target_url, logo_html=""):
                 <h3>Top 3 Rate</h3>
                 <div class="metric-value">{{ local_rate }}%</div>
             </div>
-        </div>            
+        </div>
 
         <div class="section-title">Rankings Overview</div>
         {% for keyword_group in keywords|batch(5) %}
@@ -436,8 +444,6 @@ def generate_html_report(results, target_url, logo_html=""):
     # Process data for template
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
-    
-    # Create ranking matrix
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
     
     # Process competitor data
@@ -446,7 +452,6 @@ def generate_html_report(results, target_url, logo_html=""):
         keyword = result['keyword']
         if keyword not in competitor_data:
             competitor_data[keyword] = []
-            
         competitors = result['organic_results'][:3]
         for rank, comp in enumerate(competitors, 1):
             competitor_data[keyword].append({
@@ -462,7 +467,6 @@ def generate_html_report(results, target_url, logo_html=""):
         location = result['location']
         if keyword not in local_data:
             local_data[keyword] = []
-            
         for local_result in result['local_results']:
             local_data[keyword].append({
                 'title': local_result.get('title', 'N/A'),
@@ -480,8 +484,7 @@ def generate_html_report(results, target_url, logo_html=""):
         for business in r['local_results'][:3]
     )])
     local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
-    
-    # Current timestamp
+
     now_est = datetime.now(pytz.timezone('America/New_York'))
     timestamp_str = now_est.strftime("%Y-%m-%d %I:%M:%S %p EST")
     
@@ -593,9 +596,8 @@ def main():
             invalid_locations = []
             for loc in location_list:
                 loc = loc.strip()
-                if not loc:  # Skip empty lines
+                if not loc:
                     continue
-                    
                 if loc.isdigit():
                     if len(loc) == 5:
                         processed_locations.append(loc)
@@ -635,7 +637,10 @@ Please correct all location formats before running the analysis."""
                     return [loc for loc in locations if validate_location(loc)]
                 
                 skipped_locations = []
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                # ---------------------------------------------------------
+                # CHANGE #2 (matching code above): max_workers=1 here, too
+                # ---------------------------------------------------------
+                with ThreadPoolExecutor(max_workers=1) as executor:
                     chunk_size = max(1, len(processed_locations) // 3)
                     location_chunks = [processed_locations[i:i + chunk_size] 
                                     for i in range(0, len(processed_locations), chunk_size)]
@@ -649,14 +654,13 @@ Please correct all location formats before running the analysis."""
                         chunk_index = future_to_chunk[future]
                         chunk = location_chunks[chunk_index]
                         
-                        # Determine which were skipped in this chunk
-                        for loc in chunk:
-                            if isinstance(loc, str):
-                                if loc not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
-                                    skipped_locations.append(loc)
+                        for locx in chunk:
+                            if isinstance(locx, str):
+                                if locx not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
+                                    skipped_locations.append(locx)
                             else:
-                                loc_str = f"{loc['city']}, {loc['state']}"
-                                if loc not in chunk_valid_locations:
+                                loc_str = f"{locx['city']}, {locx['state']}"
+                                if locx not in chunk_valid_locations:
                                     skipped_locations.append(loc_str)
                         
                         valid_locations.extend(chunk_valid_locations)
@@ -682,7 +686,6 @@ Please check for typos or verify these locations exist.""")
                     location_string = location
                 else:
                     location_string = f"{location['city']}, {location['state']}"
-                
                 for keyword in keyword_list:
                     search_queries.append({
                         'keyword': keyword,
@@ -690,7 +693,6 @@ Please check for typos or verify these locations exist.""")
                         'query': f"{keyword} {location_string}"
                     })
 
-            # Analyze rankings
             with st.expander("🔍 Rankings Analysis Progress", expanded=True):
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
@@ -700,14 +702,11 @@ Please check for typos or verify these locations exist.""")
             st.session_state.results = results
             st.session_state.analysis_complete = True
             st.session_state.analysis_duration = analysis_duration
-            
             st.info(f"✨ Analysis completed in {analysis_duration} seconds")
 
-    # Display results if analysis is complete
     if st.session_state.analysis_complete and hasattr(st.session_state, 'results'):
         results = st.session_state.results
         
-        # Summary metrics
         st.markdown("### 📊 Analysis Summary")
         col1, col2, col3 = st.columns(3)
         total_queries = len(results)
@@ -784,10 +783,8 @@ Please check for typos or verify these locations exist.""")
                 unsafe_allow_html=True
             )
 
-        # Rankings overview
         st.markdown("### 📈 Rankings Overview")
         df_overview = pd.DataFrame(results)
-        
         pivot_data = pd.pivot_table(
             df_overview,
             index='location',
@@ -797,18 +794,14 @@ Please check for typos or verify these locations exist.""")
                 x, key=lambda y: float('inf') if y == 'Not on Page 1' else float(y.replace('#', ''))
             )
         )
-        
         def style_ranking(val):
             if '#' in str(val):
                 return 'background-color: #dcfce7; color: #166534'
             return 'background-color: #fee2e2; color: #991b1b'
-        
         styled_pivot = pivot_data.style.applymap(style_ranking)
         st.dataframe(styled_pivot, height=400)
 
-        # Detailed results in tabs
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
-        
         with tab1:
             for result in results:
                 with st.expander(f"{result['keyword']} in {result['location']}"):
@@ -816,7 +809,6 @@ Please check for typos or verify these locations exist.""")
                         st.markdown(f"**#{idx}** - {org.get('title', 'N/A')}")
                         st.markdown(f"Domain: {org.get('domain', 'N/A')}")
                         st.markdown("---")
-
         with tab2:
             for result in results:
                 with st.expander(f"{result['keyword']} in {result['location']}"):
@@ -825,17 +817,14 @@ Please check for typos or verify these locations exist.""")
                         st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
                         st.markdown("---")
 
-        # Generate HTML report (including the user-uploaded logo for PDF)
+        # Generate HTML report
         html_report = generate_html_report(results, target_url, logo_html=logo_img_html)
 
-        # Export options
         st.subheader("📥 Export Options")
         col1, col2, col3 = st.columns(3)
-        
         clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
         timestamp = datetime.now().strftime("%Y%m%d")
         base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
-        
         with col1:
             st.download_button(
                 label="📄 Download HTML Report",
@@ -843,7 +832,6 @@ Please check for typos or verify these locations exist.""")
                 file_name=f"{base_filename}.html",
                 mime="text/html"
             )
-        
         with col2:
             csv = df_overview.to_csv(index=False)
             st.download_button(
@@ -856,13 +844,12 @@ Please check for typos or verify these locations exist.""")
             pdf_bytes = io.BytesIO()
             pisa.CreatePDF(html_report, dest=pdf_bytes)
             pdf_bytes.seek(0)
-            
             st.download_button(
                 label="📑 Download PDF Report",
                 data=pdf_bytes,
                 file_name=f"{base_filename}.pdf",
                 mime="application/pdf"
             )
-        
+
 if __name__ == "__main__":
     main()
