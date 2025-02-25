@@ -1,4 +1,4 @@
-# Version 1.5.2
+# Version 1.5.3
 import streamlit as st
 import pandas as pd
 import requests
@@ -27,6 +27,9 @@ class ThreadSafeRateLimiter:
             if time_to_wait > 0:
                 time.sleep(time_to_wait)
             self.last_call = time.time()
+
+# Change: Wait 2 seconds between calls (0.5 calls per second)
+geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=0.5)
 
 # Page config
 st.set_page_config(
@@ -87,9 +90,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Create a global rate limiter instance
-geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=1)
-
 def validate_location(location):
     """Validate if a location exists using GeoPy"""
     debug_prefix = "[Location Validation]"
@@ -98,7 +98,6 @@ def validate_location(location):
     geolocator = Nominatim(user_agent="seo_analysis_tool")
     try:
         print(f"{debug_prefix} Input type: {type(location)}")
-        
         if isinstance(location, str) and location.isdigit() and len(location) == 5:
             search_term = f"{location}, USA"
             print(f"{debug_prefix} Processing as ZIP code")
@@ -108,17 +107,14 @@ def validate_location(location):
             
         print(f"{debug_prefix} Search term: {search_term}")
         print(f"{debug_prefix} Attempting geocoding...")
-        
         geocoding_limiter.wait()
-        location_data = geolocator.geocode(search_term)
-        
+        location_data = geolocator.geocode(search_term, timeout=10)
         if location_data:
             print(f"{debug_prefix} Success! Found: {location_data.address}")
             return True
         else:
             print(f"{debug_prefix} Location not found in database")
             return False
-            
     except KeyError as ke:
         print(f"{debug_prefix} Error: Invalid dictionary format - {ke}")
         return False
@@ -147,7 +143,6 @@ def fetch_serp_data(query):
         'num': 10,
         'output': 'json'
     }
-    
     try:
         return rate_limited_api_call(base_url, params)
     except requests.exceptions.RequestException:
@@ -158,16 +153,13 @@ def process_query(query, target_url):
     serp_data = fetch_serp_data(query)
     if not serp_data:
         return None
-        
     organic_results = serp_data.get('organic_results', [])
     local_results = serp_data.get('local_results', [])
-    
     position = "Not on Page 1"
     for idx, result in enumerate(organic_results, 1):
         if target_url in result.get('domain', '').lower():
             position = f"#{idx}"
             break
-    
     return {
         'keyword': query['keyword'],
         'location': query['location'],
@@ -181,9 +173,7 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     results = []
     completed = 0
     total = len(search_queries)
-    
     progress_lock = threading.Lock()
-    
     def update_progress():
         nonlocal completed
         with progress_lock:
@@ -191,13 +181,11 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
             progress = completed / total
             progress_bar.progress(progress)
             progress_text.text(f"Processed {completed}/{total} queries...")
-    
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_query = {
             executor.submit(process_query, query, target_url): query 
             for query in search_queries
         }
-        
         for future in as_completed(future_to_query):
             query = future_to_query[future]
             try:
@@ -207,14 +195,9 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
             except Exception as e:
                 st.warning(f"Error processing query '{query['keyword']}' in {query['location']}: {str(e)}")
             update_progress()
-    
     return results
 
 def generate_html_report(results, target_url, logo_html=""):
-    """
-    Generates the HTML/PDF report, but uses a single combined table
-    for top competitors and one combined table for local results.
-    """
     template_string = """
     <!DOCTYPE html>
     <html lang="en">
@@ -312,7 +295,6 @@ def generate_html_report(results, target_url, logo_html=""):
             <p>Generated on {{ timestamp }}</p>
         </div>
 
-        <!-- Organic Search Summary -->
         <div class="section-title">Organic Search Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
@@ -329,7 +311,6 @@ def generate_html_report(results, target_url, logo_html=""):
             </div>
         </div>
 
-        <!-- Local Map Summary -->
         <div class="section-title">Local Map Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
@@ -346,7 +327,6 @@ def generate_html_report(results, target_url, logo_html=""):
             </div>
         </div>
 
-        <!-- Rankings Overview -->
         <div class="section-title">Rankings Overview</div>
         {% for keyword_group in keywords|batch(5) %}
         <div class="keyword-table">
@@ -433,23 +413,18 @@ def generate_html_report(results, target_url, logo_html=""):
         </table>
     </body>
     </html>
-    """
+    """.strip()
     
     # Flatten competitor data into a single list
     competitor_data_flat = []
-    # Flatten local data into a single list
     local_data_flat = []
-    
-    # Build ranking matrix for the "Rankings Overview"
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
     ranking_matrix = {(r['location'], r['keyword']): r['target_position'] for r in results}
 
-    # Extract competitor (organic) data & local data from each result
     for r in results:
         keyword = r['keyword']
         location = r['location']
-        # Up to top 3 organic results
         for rank_idx, comp in enumerate(r.get('organic_results', []), 1):
             competitor_data_flat.append({
                 'keyword': keyword,
@@ -457,7 +432,6 @@ def generate_html_report(results, target_url, logo_html=""):
                 'domain': comp.get('domain', 'N/A'),
                 'location': location
             })
-        # Up to top 3 local results
         for rank_idx, loc_res in enumerate(r.get('local_results', []), 1):
             local_data_flat.append({
                 'keyword': keyword,
@@ -468,13 +442,12 @@ def generate_html_report(results, target_url, logo_html=""):
                 'location': location
             })
 
-    # Summaries
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
     ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
     total_local_listings = sum(1 for r in results if r['local_results'])
     in_top_3_local = sum(1 for r in results if any(
-        business.get('title', '').lower() == target_url.lower() 
+        business.get('title', '').lower() == target_url.lower()
         for business in r['local_results'][:3]
     ))
     local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
@@ -503,17 +476,13 @@ def generate_html_report(results, target_url, logo_html=""):
     return html_report
 
 def main():
-    # Get version number from first line comment
     with open(__file__, 'r') as file:
         first_line = file.readline().strip()
         version = first_line.replace('# Version ', '')
-
-    # Header with "By Chris Walnum" subheading
     col1, col2 = st.columns([0.85, 0.15])
     with col1:
         st.markdown("""
             <div style="display: flex; align-items: center; margin-bottom: 20px;">
-                <!-- This 🎯 icon is for the UI only; user-uploaded logo is NOT displayed here -->
                 <div style="color: #FF4B4B; font-size: 2.5em; margin-right: 10px;">🎯</div>
                 <div>
                     <div style="color: #262730; font-size: 1.8em; font-weight: 600;">
@@ -532,12 +501,8 @@ def main():
             Analyze a website's search rankings across multiple locations with detailed insights.
         </div>
     """, unsafe_allow_html=True)
-
-    # Sidebar for inputs
     with st.sidebar:
         st.header("Analysis Configuration")
-        
-        # Target URL input
         target_url = st.text_input(
             "Target Website URL",
             placeholder="example.com",
@@ -545,46 +510,31 @@ def main():
         )
         if target_url:
             target_url = target_url.replace('http://', '').replace('https://', '').replace('www.', '').rstrip('/')
-
-        # Keywords input
         st.markdown("### Keywords")
         st.markdown("Enter one keyword per line")
         keywords = st.text_area("", placeholder="Enter your keywords here", key="keywords")
-        
-        # Locations input
         st.markdown("### Locations")
         st.markdown("""Enter one location per line:
 - City, State (e.g., New York, NY)
 - ZIP code (e.g., 90210)""")
         locations = st.text_area("", placeholder="Enter your locations here", key="locations")
-
-        # Logo upload for PDF only (not displayed in UI)
         logo_file = st.file_uploader("Upload Logo (For PDF Only)", type=["png", "jpg", "jpeg"])
         if logo_file is not None:
             logo_bytes = logo_file.read()
             logo_base64 = base64.b64encode(logo_bytes).decode('utf-8')
             logo_mime = logo_file.type
-            # This HTML is passed to the PDF, but NOT shown in the UI
             logo_img_html = f'<img src="data:{logo_mime};base64,{logo_base64}" alt="Logo">'
         else:
-            # If no file is uploaded, we fall back to the 🎯 icon in the PDF
             logo_img_html = '<div style="color: #FF4B4B; font-size: 2.5em; margin-right: 10px;">🎯</div>'
-
         analyze_button = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
-
     if analyze_button:
         if not all([target_url, keywords, locations]):
             st.error("Please fill in all required fields before running the analysis.")
             return
-        
         st.session_state.start_time = time.time()
-        
         with st.spinner("🔍 Analyzing search rankings..."):
-            # Process inputs
             keyword_list = [k.strip() for k in keywords.split('\n') if k.strip()]
             location_list = [l.strip() for l in locations.split('\n') if l.strip()]
-            
-            # Process locations
             processed_locations = []
             invalid_locations = []
             for loc in location_list:
@@ -605,7 +555,6 @@ def main():
                         })
                     else:
                         invalid_locations.append(f"• {loc} (invalid format - use 'City, State' or 5-digit ZIP)")
-
             if invalid_locations:
                 error_message = """Invalid location formats detected:
 
@@ -619,31 +568,22 @@ Please correct all location formats before running the analysis."""
                 invalid_list = "\n".join(invalid_locations)
                 st.error(error_message.format(invalid_list))
                 return
-
-            # Validate locations with progress bar
             with st.expander("📍 Location Validation Progress", expanded=True):
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
                 valid_locations = []
-                
                 def validate_location_batch(locations):
                     return [loc for loc in locations if validate_location(loc)]
-                
                 skipped_locations = []
                 with ThreadPoolExecutor(max_workers=3) as executor:
                     chunk_size = max(1, len(processed_locations) // 3)
-                    location_chunks = [processed_locations[i:i + chunk_size] 
-                                    for i in range(0, len(processed_locations), chunk_size)]
-                    
-                    future_to_chunk = {executor.submit(validate_location_batch, chunk): i 
-                                     for i, chunk in enumerate(location_chunks)}
-                    
+                    location_chunks = [processed_locations[i:i + chunk_size] for i in range(0, len(processed_locations), chunk_size)]
+                    future_to_chunk = {executor.submit(validate_location_batch, chunk): i for i, chunk in enumerate(location_chunks)}
                     completed_chunks = 0
                     for future in as_completed(future_to_chunk):
                         chunk_valid_locations = future.result()
                         chunk_index = future_to_chunk[future]
                         chunk = location_chunks[chunk_index]
-                        
                         for locx in chunk:
                             if isinstance(locx, str):
                                 if locx not in [str(x) if isinstance(x, str) else None for x in chunk_valid_locations]:
@@ -652,24 +592,19 @@ Please correct all location formats before running the analysis."""
                                 loc_str = f"{locx['city']}, {locx['state']}"
                                 if locx not in chunk_valid_locations:
                                     skipped_locations.append(loc_str)
-                        
                         valid_locations.extend(chunk_valid_locations)
                         completed_chunks += 1
                         progress_bar.progress(completed_chunks / len(location_chunks))
                         progress_text.text(f"Validated {completed_chunks}/{len(location_chunks)} location groups...")
-                
                 if skipped_locations:
                     warning_locations = "\n• ".join(skipped_locations)
                     st.warning(f"""The following locations could not be validated and will be skipped:
 - {warning_locations}
 
 Please check for typos or verify these locations exist.""")
-                    
                 if not valid_locations:
                     st.error("No valid locations found. Please check your inputs and try again.")
                     return
-
-            # Create search queries
             search_queries = []
             for location in valid_locations:
                 if isinstance(location, str):
@@ -682,99 +617,83 @@ Please check for typos or verify these locations exist.""")
                         'location': location_string,
                         'query': f"{keyword} {location_string}"
                     })
-
             with st.expander("🔍 Rankings Analysis Progress", expanded=True):
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
                 results = parallel_process_queries(search_queries, target_url, progress_text, progress_bar)
-
             analysis_duration = round(time.time() - st.session_state.start_time, 1)
             st.session_state.results = results
             st.session_state.analysis_complete = True
             st.session_state.analysis_duration = analysis_duration
             st.info(f"✨ Analysis completed in {analysis_duration} seconds")
-
     if st.session_state.analysis_complete and hasattr(st.session_state, 'results'):
         results = st.session_state.results
-        
-        # Summary metrics
         st.markdown("### 📊 Analysis Summary")
         col1, col2, col3 = st.columns(3)
         total_queries = len(results)
         ranked_queries = len([r for r in results if '#' in r['target_position']])
-        
         total_local_listings = len([r for r in results if r['local_results']])
         in_top_3_local = len([r for r in results if any(
             business.get('title', '').lower() == target_url.lower() 
             for business in r.get('local_results', [])[:3]
         )])
         local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
-
         with col1:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Total Queries</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {total_queries}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Total Queries</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                    {total_queries}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         with col2:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>First Page Rankings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {ranked_queries}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>First Page Rankings</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                    {ranked_queries}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         with col3:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Ranking Rate</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {(ranked_queries/total_queries*100):.1f}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-        
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Ranking Rate</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                    {(ranked_queries/total_queries*100):.1f}%
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         st.markdown("### 📍 Local Rankings Summary")
         col4, col5, col6 = st.columns(3)
         with col4:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Total Local Listings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {total_local_listings}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Total Local Listings</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                    {total_local_listings}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         with col5:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>In Top 3 Listings</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {in_top_3_local}
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>In Top 3 Listings</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                    {in_top_3_local}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         with col6:
-            st.markdown(
-                f"""<div class="metric-card">
-                    <h4>Top 3 Rate</h4>
-                    <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
-                        {local_rate}%
-                    </div>
-                </div>""",
-                unsafe_allow_html=True
-            )
-
-        # Rankings overview
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Top 3 Rate</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">
+                    {local_rate}%
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         st.markdown("### 📈 Rankings Overview")
         df_overview = pd.DataFrame(results)
         pivot_data = pd.pivot_table(
@@ -792,7 +711,6 @@ Please check for typos or verify these locations exist.""")
             return 'background-color: #fee2e2; color: #991b1b'
         styled_pivot = pivot_data.style.applymap(style_ranking)
         st.dataframe(styled_pivot, height=400)
-
         tab1, tab2 = st.tabs(["🔍 Organic Results", "📍 Local Results"])
         with tab1:
             for result in results:
@@ -808,24 +726,20 @@ Please check for typos or verify these locations exist.""")
                         st.markdown(f"**#{idx}** - {loc.get('title', 'N/A')}")
                         st.markdown(f"Rating: {loc.get('rating', 'N/A')}★ ({loc.get('reviews', '0')} reviews)")
                         st.markdown("---")
-
-        # Generate HTML report (combined competitor/local tables)
         html_report = generate_html_report(results, target_url, logo_html=logo_img_html)
-
         st.subheader("📥 Export Options")
-        col1, col2, col3 = st.columns(3)
+        colA, colB, colC = st.columns(3)
         clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
         timestamp = datetime.now().strftime("%Y%m%d")
         base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
-        
-        with col1:
+        with colA:
             st.download_button(
                 label="📄 Download HTML Report",
                 data=html_report,
                 file_name=f"{base_filename}.html",
                 mime="text/html"
             )
-        with col2:
+        with colB:
             csv = df_overview.to_csv(index=False)
             st.download_button(
                 label="📊 Download CSV",
@@ -833,7 +747,7 @@ Please check for typos or verify these locations exist.""")
                 file_name=f"{base_filename}.csv",
                 mime="text/csv"
             )
-        with col3:
+        with colC:
             pdf_bytes = io.BytesIO()
             pisa.CreatePDF(html_report, dest=pdf_bytes)
             pdf_bytes.seek(0)
