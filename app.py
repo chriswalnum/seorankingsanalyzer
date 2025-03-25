@@ -476,7 +476,7 @@ def generate_html_report(results, target_url, logo_html=""):
     ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
     total_local_listings = len([r for r in results if r['local_results']])
     in_top_3_local = len([r for r in results if any(
-        business.get('title', '').lower() == target_url.lower() 
+        target_url.lower() in business.get('website', '').lower()
         for business in r['local_results'][:3]
     )])
     local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
@@ -715,7 +715,7 @@ Please check for typos or verify these locations exist.""")
         
         total_local_listings = len([r for r in results if r['local_results']])
         in_top_3_local = len([r for r in results if any(
-            business.get('title', '').lower() == target_url.lower() 
+            target_url.lower() in business.get('website', '').lower()
             for business in r.get('local_results', [])[:3]
         )])
         local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
