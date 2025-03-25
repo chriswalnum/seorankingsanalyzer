@@ -1,4 +1,4 @@
-# Version 1.5.2
+# Version 1.5.3
 import streamlit as st
 import pandas as pd
 import requests
@@ -224,104 +224,155 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
     return results
 
 def generate_html_report(results, target_url, logo_html=""):
-    # HTML template for the PDF/HTML export
+    """
+    Generates an HTML report. Only the template_string was changed
+    here to match Claude's improved styling for the PDF export.
+    """
     template_string = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>SEO Analysis Report</title>
-        <style>
-            @page {
-                margin: 2.5cm;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SEO Analysis Report</title>
+    <style>
+        @page {
+            margin: 2cm;
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 10pt;
+                color: #666;
             }
-            body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                color: #1a1a1a;
-                margin: 0;
-                padding: 0;
-            }
-            .header {
-                text-align: center;
-                margin-bottom: 3rem;
-                border-bottom: 2px solid #2563eb;
-                padding-bottom: 1rem;
-            }
-            .logo-container {
-                margin-bottom: 10px;
-                text-align: center;
-            }
-            .logo-container img {
-                max-height: 80px;
-            }
-            .header h1 {
-                color: #2563eb;
-                font-size: 28px;
-                margin-bottom: 0.5rem;
-            }
-            .metrics {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 1.5rem;
-                margin: 2rem 0;
-            }
-            .metric-card {
-                background: #f8fafc;
-                padding: 1.5rem;
-                border-radius: 8px;
-                border: 1px solid #e2e8f0;
-                text-align: center;
-            }
-            .section-title {
-                color: #2563eb;
-                font-size: 24px;
-                margin: 2.5rem 0 1.5rem;
-                border-bottom: 2px solid #e2e8f0;
-                padding-bottom: 0.5rem;
-            }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 1.5rem 0;
-            }
-            th {
-                background: #f1f5f9;
-                color: #1e40af;
-                font-weight: 600;
-                text-align: left;
-            }
-            th, td {
-                padding: 12px;
-                border: 1px solid #e2e8f0;
-            }
-            .status-badge {
-                display: inline-block;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            .status-success {
-                background: #dcfce7;
-                color: #166534;
-            }
-            .status-failure {
-                background: #fee2e2;
-                color: #991b1b;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="logo-container">
-                {{ logo_html|safe }}
-            </div>
-            <h1>SEO Rankings Analysis Report</h1>
-            <p>{{ target_url }}</p>
-            <p>Generated on {{ timestamp }}</p>
+        }
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            line-height: 1.5;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 1rem;
+            page-break-after: avoid;
+        }
+        .section {
+            page-break-inside: avoid;
+            margin-bottom: 1.5rem;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        /* Improved metrics cards */
+        .metrics {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            page-break-inside: avoid;
+        }
+        .metric-card {
+            flex: 1;
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            text-align: center;
+            min-width: 28%;
+        }
+        .metric-card h3 {
+            margin-top: 0;
+            color: #4b5563;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2563eb;
+        }
+        /* Enhanced section headers */
+        .section-title {
+            color: #1e40af;
+            font-size: 18px;
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            page-break-after: avoid;
+        }
+        /* Improved tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 13px;
+        }
+        th {
+            background: #f1f5f9;
+            color: #1e40af;
+            font-weight: 600;
+            text-align: left;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+        }
+        td {
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+        }
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        /* Position badges */
+        .position-badge {
+            display: inline-block;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .position-top {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .position-none {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        /* Rankings overview table */
+        .keyword-table {
+            page-break-inside: avoid;
+            margin-bottom: 1.5rem;
+        }
+        .keyword-table th {
+            text-align: center;
+        }
+        .competitor-rank {
+            text-align: center;
+            font-weight: 600;
+        }
+        /* Company info */
+        .company-info {
+            margin-top: 1.5rem;
+            font-size: 13px;
+            color: #4b5563;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-container">
+            {{ logo_html|safe }}
         </div>
+        <h1 style="color: #2563eb; font-size: 24px; margin-bottom: 0.25rem;">SEO Rankings Analysis Report</h1>
+        <p style="margin: 0.5rem 0; font-size: 16px;">{{ target_url }}</p>
+        <p style="color: #6b7280; font-size: 14px;">Generated on {{ timestamp }}</p>
+    </div>
 
+    <div class="section">
         <div class="section-title">Organic Search Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
@@ -337,7 +388,9 @@ def generate_html_report(results, target_url, logo_html=""):
                 <div class="metric-value">{{ ranking_rate }}%</div>
             </div>
         </div>
+    </div>
 
+    <div class="section">
         <div class="section-title">Local Map Rankings Summary</div>
         <div class="metrics">
             <div class="metric-card">
@@ -352,15 +405,18 @@ def generate_html_report(results, target_url, logo_html=""):
                 <h3>Top 3 Rate</h3>
                 <div class="metric-value">{{ local_rate }}%</div>
             </div>
-        </div>            
+        </div>
+    </div>            
 
+    <div class="page-break"></div>
+    <div class="section">
         <div class="section-title">Rankings Overview</div>
         {% for keyword_group in keywords|batch(5) %}
         <div class="keyword-table">
             <table>
                 <thead>
                     <tr>
-                        <th>Location</th>
+                        <th style="width: 25%">Location</th>
                         {% for keyword in keyword_group %}
                         <th>{{ keyword }}</th>
                         {% endfor %}
@@ -376,9 +432,9 @@ def generate_html_report(results, target_url, logo_html=""):
                             {% if position == 'n/a' %}
                             <span style="color: #94a3b8">-</span>
                             {% elif position == 'Not on Page 1' %}
-                            <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
+                            <span class="position-badge position-none">{{ position }}</span>
                             {% else %}
-                            <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px;">{{ position }}</span>
+                            <span class="position-badge position-top">{{ position }}</span>
                             {% endif %}
                         </td>
                         {% endfor %}
@@ -388,64 +444,79 @@ def generate_html_report(results, target_url, logo_html=""):
             </table>
         </div>
         {% endfor %}
+    </div>
 
+    <div class="page-break"></div>
+    <div class="section">
         <div class="section-title">Top Competitors by Keyword</div>
         {% for keyword in keywords %}
-        <table class="competitors-table">
-            <thead>
-                <tr>
-                    <th colspan="3">{{ keyword }}</th>
-                </tr>
-                <tr>
-                    <th style="width: 80px">Rank</th>
-                    <th>Domain</th>
-                    <th style="width: 120px">Location</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for result in competitor_data.get(keyword, []) %}
-                <tr>
-                    <td class="competitor-rank">#{{ result.rank }}</td>
-                    <td>{{ result.domain }}</td>
-                    <td>{{ result.location }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="section">
+            <table class="competitors-table">
+                <thead>
+                    <tr>
+                        <th colspan="3" style="background-color: #e5edff;">{{ keyword }}</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 15%">Rank</th>
+                        <th style="width: 60%">Domain</th>
+                        <th style="width: 25%">Location</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in competitor_data.get(keyword, []) %}
+                    <tr>
+                        <td class="competitor-rank">#{{ result.rank }}</td>
+                        <td>{{ result.domain }}</td>
+                        <td>{{ result.location }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
         {% endfor %}
+    </div>
 
+    <div class="page-break"></div>
+    <div class="section">
         <div class="section-title">Local Business Results</div>
         {% for keyword in keywords %}
-        <table class="competitors-table">
-            <thead>
-                <tr>
-                    <th colspan="5">{{ keyword }}</th>
-                </tr>
-                <tr>
-                    <th style="width: 80px">Rank</th>
-                    <th>Business Name</th>
-                    <th style="width: 100px">Rating</th>
-                    <th style="width: 100px">Reviews</th>
-                    <th style="width: 120px">Location</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for result in local_data.get(keyword, []) %}
-                <tr>
-                    <td class="competitor-rank">#{{ loop.index }}</td>
-                    <td>{{ result.title }}</td>
-                    <td style="text-align: center">{% if result.rating %}★ {{ "%.1f"|format(result.rating|float) }}{% endif %}</td>
-                    <td style="text-align: center">{{ result.reviews }}</td>
-                    <td class="location-cell">{{ result.location }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="section">
+            <table class="competitors-table">
+                <thead>
+                    <tr>
+                        <th colspan="5" style="background-color: #e5edff;">{{ keyword }}</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 10%">Rank</th>
+                        <th style="width: 40%">Business Name</th>
+                        <th style="width: 15%">Rating</th>
+                        <th style="width: 15%">Reviews</th>
+                        <th style="width: 20%">Location</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in local_data.get(keyword, []) %}
+                    <tr>
+                        <td class="competitor-rank">#{{ loop.index }}</td>
+                        <td>{{ result.title }}</td>
+                        <td style="text-align: center">{% if result.rating %}★ {{ "%.1f"|format(result.rating|float) }}{% endif %}</td>
+                        <td style="text-align: center">{{ result.reviews }}</td>
+                        <td>{{ result.location }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
         {% endfor %}
-    </body>
-    </html>
-    """
-    
+    </div>
+
+    <div class="company-info">
+        <p>Report generated by SEO Rankings Analyzer Pro</p>
+    </div>
+</body>
+</html>
+"""
+
     # Process data for template
     keywords = sorted(set(r['keyword'] for r in results))
     locations = sorted(set(r['location'] for r in results))
