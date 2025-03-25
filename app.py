@@ -1,4 +1,4 @@
-# Version 1.5.3
+# Version 1.5.4
 import streamlit as st
 import pandas as pd
 import requests
@@ -40,7 +40,7 @@ if 'analysis_complete' not in st.session_state:
     st.session_state.analysis_complete = False
     st.session_state.start_time = None
 
-# Enhanced Custom CSS
+# Enhanced Custom CSS for the web UI
 st.markdown("""
     <style>
         .stApp {
@@ -225,8 +225,9 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
 
 def generate_html_report(results, target_url, logo_html=""):
     """
-    Generates an HTML report. Only the template_string was changed
-    here to match Claude's improved styling for the PDF export.
+    Generates an HTML report for the PDF export.
+    The template below has been adjusted to remove the unsupported
+    @bottom-center rule which was causing errors.
     """
     template_string = """
 <!DOCTYPE html>
@@ -237,11 +238,6 @@ def generate_html_report(results, target_url, logo_html=""):
     <style>
         @page {
             margin: 2cm;
-            @bottom-center {
-                content: "Page " counter(page) " of " counter(pages);
-                font-size: 10pt;
-                color: #666;
-            }
         }
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
