@@ -1,4 +1,4 @@
-# Version 1.5.1
+# Version 1.5.2
 import streamlit as st
 import pandas as pd
 import requests
@@ -134,6 +134,19 @@ def rate_limited_api_call(base_url, params):
     response.raise_for_status()
     return response.json()
 
+def get_local_results(serp_data):
+    """
+    Attempt to find local results in either 'local_results' or
+    'local_pack' -> 'results' if that is how ValueSERP returns them.
+    """
+    local_results = serp_data.get('local_results', [])
+    # Fallback if local_results is empty but local_pack might exist
+    if not local_results and 'local_pack' in serp_data:
+        local_pack = serp_data['local_pack']
+        if isinstance(local_pack, dict):
+            local_results = local_pack.get('results', [])
+    return local_results
+
 def fetch_serp_data(query):
     """Fetch SERP data from ValueSERP API with rate limiting"""
     base_url = "https://api.valueserp.com/search"
@@ -160,7 +173,7 @@ def process_query(query, target_url):
         return None
         
     organic_results = serp_data.get('organic_results', [])
-    local_results = serp_data.get('local_results', [])
+    local_results = get_local_results(serp_data)
     
     position = "Not on Page 1"
     for idx, result in enumerate(organic_results, 1):
@@ -473,13 +486,27 @@ def generate_html_report(results, target_url, logo_html=""):
     
     total_queries = len(results)
     ranked_queries = len([r for r in results if '#' in r['target_position']])
-    ranking_rate = f"{(ranked_queries/total_queries*100):.1f}"
+    ranking_rate = f"{(ranked_queries / total_queries * 100):.1f}"
+    
+    # Count how many queries returned local results at all
     total_local_listings = len([r for r in results if r['local_results']])
-    in_top_3_local = len([r for r in results if any(
-        target_url.lower() in business.get('website', '').lower()
-        for business in r['local_results'][:3]
-    )])
-    local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
+    
+    # Check if target_url is present in either 'website' or 'link'
+    in_top_3_local = len([
+        r for r in results
+        if any(
+            (
+                target_url.lower() in (business.get('website') or '').lower()
+            ) or (
+                target_url.lower() in (business.get('link') or '').lower()
+            )
+            for business in r.get('local_results', [])[:3]
+        )
+    ])
+    
+    local_rate = "0.0"
+    if total_local_listings > 0:
+        local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}"
     
     # Current timestamp
     now_est = datetime.now(pytz.timezone('America/New_York'))
@@ -713,11 +740,22 @@ Please check for typos or verify these locations exist.""")
         total_queries = len(results)
         ranked_queries = len([r for r in results if '#' in r['target_position']])
         
+        # Count queries that actually returned local results
         total_local_listings = len([r for r in results if r['local_results']])
-        in_top_3_local = len([r for r in results if any(
-            target_url.lower() in business.get('website', '').lower()
-            for business in r.get('local_results', [])[:3]
-        )])
+        
+        # Check top-3 local listings by matching domain in 'website' or 'link'
+        in_top_3_local = len([
+            r for r in results
+            if any(
+                (
+                    target_url.lower() in (business.get('website') or '').lower()
+                ) or (
+                    target_url.lower() in (business.get('link') or '').lower()
+                )
+                for business in r.get('local_results', [])[:3]
+            )
+        ])
+        
         local_rate = f"{(in_top_3_local / total_local_listings * 100):.1f}" if total_local_listings > 0 else "0.0"
 
         with col1:
@@ -830,13 +868,13 @@ Please check for typos or verify these locations exist.""")
 
         # Export options
         st.subheader("📥 Export Options")
-        col1, col2, col3 = st.columns(3)
+        colA, colB, colC = st.columns(3)
         
         clean_domain = target_url.replace('/', '').replace(':', '').replace('.', '_')
         timestamp = datetime.now().strftime("%Y%m%d")
         base_filename = f"{clean_domain}_SEO_Analysis_Report_{timestamp}"
         
-        with col1:
+        with colA:
             st.download_button(
                 label="📄 Download HTML Report",
                 data=html_report,
@@ -844,7 +882,7 @@ Please check for typos or verify these locations exist.""")
                 mime="text/html"
             )
         
-        with col2:
+        with colB:
             csv = df_overview.to_csv(index=False)
             st.download_button(
                 label="📊 Download CSV",
@@ -852,7 +890,7 @@ Please check for typos or verify these locations exist.""")
                 file_name=f"{base_filename}.csv",
                 mime="text/csv"
             )
-        with col3:
+        with colC:
             pdf_bytes = io.BytesIO()
             pisa.CreatePDF(html_report, dest=pdf_bytes)
             pdf_bytes.seek(0)
@@ -863,6 +901,6 @@ Please check for typos or verify these locations exist.""")
                 file_name=f"{base_filename}.pdf",
                 mime="application/pdf"
             )
-        
+
 if __name__ == "__main__":
     main()
