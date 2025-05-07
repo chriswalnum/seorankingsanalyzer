@@ -1,4 +1,4 @@
-# Version 1.5.3
+# Version 1.5.4
 # Updated rate limits to prevent too many / too quick calls causing errors on larger queries
 import streamlit as st
 import pandas as pd
