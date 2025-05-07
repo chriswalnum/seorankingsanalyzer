@@ -1,4 +1,5 @@
 # Version 1.5.3
+# Updated rate limits to prevent too many / too quick calls causing errors on larger queries
 import streamlit as st
 import pandas as pd
 import requests
@@ -15,7 +16,7 @@ import threading
 from xhtml2pdf import pisa
 
 class ThreadSafeRateLimiter:
-    def __init__(self, calls_per_second=1):
+    def __init__(self, calls_per_second=0.5):
         self.calls_per_second = calls_per_second
         self.last_call = time.time()
         self.lock = threading.Lock()
@@ -88,7 +89,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Create a global rate limiter instance
-geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=1)
+geocoding_limiter = ThreadSafeRateLimiter(calls_per_second=0.5)
 
 def validate_location(location):
     """Validate if a location exists using GeoPy"""
@@ -205,7 +206,7 @@ def parallel_process_queries(search_queries, target_url, progress_text, progress
             progress_bar.progress(progress)
             progress_text.text(f"Processed {completed}/{total} queries...")
     
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         future_to_query = {
             executor.submit(process_query, query, target_url): query 
             for query in search_queries
@@ -729,7 +730,7 @@ Please correct all location formats before running the analysis."""
                     return [loc for loc in locations if validate_location(loc)]
                 
                 skipped_locations = []
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                with ThreadPoolExecutor(max_workers=1) as executor:
                     chunk_size = max(1, len(processed_locations) // 3)
                     location_chunks = [processed_locations[i:i + chunk_size] 
                                     for i in range(0, len(processed_locations), chunk_size)]
